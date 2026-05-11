@@ -18,7 +18,6 @@ from anthropic import Anthropic
 ## Utilities ##
 ###############
 
-# CHECKPOINT_FILE = "ingestion_checkpoint.txt"
 COLLECTION = "recipes"
 BATCH_SIZE = 256
 
@@ -160,30 +159,11 @@ df["full_text"] = df.apply(
 print(f"\nQdrant status: {qdrant.get_collections()}")
 print(f"{len(df)} recipes loaded. Will use embedding model: {EMBED_MODEL}")
 
-#########################
-## Checkpoint recovery ##
-#########################
-
-# Always start from 0 - we'll skip recipes that are already in Qdrant
-# This is safer than relying on checkpoint which might be out of sync
-start_idx = 0
-
-# if collection_exists:
-#     if os.path.exists(CHECKPOINT_FILE):
-#         with open(CHECKPOINT_FILE, "r") as f:
-#             try:
-#                 last_idx = int(f.read().strip())
-#                 print(f"\nCheckpoint found at index {last_idx}. Will verify which recipes are already in Qdrant.")
-#             except ValueError:
-#                 print(f"\nInvalid checkpoint file. Starting from index 0.")
-
-print(f"Starting ingestion from index {start_idx}. Will skip recipes already in Qdrant.\n")
-
 ####################
 ## Ingestion loop ##
 ####################
 
-for i in range(start_idx, len(df), BATCH_SIZE):
+for i in range(0, len(df), BATCH_SIZE):
 
     batch_df = df.iloc[i:i+BATCH_SIZE]
     texts = batch_df["full_text"].tolist()
@@ -246,9 +226,6 @@ for i in range(start_idx, len(df), BATCH_SIZE):
         print(f"First point ID: {points[0].id if points else 'No points'}")
         print(f"First point vector length: {len(points[0].vector) if points else 0}")
         raise
-
-    # with open(CHECKPOINT_FILE, "w") as f:
-    #     f.write(str(i + len(batch_df)))
 
 print(f"Done! Total recipes in collection '{COLLECTION}': {qdrant.count(COLLECTION).count}")
 
