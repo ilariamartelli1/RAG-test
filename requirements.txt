@@ -1,0 +1,7 @@
+datasets
+pandas
+anthropic
+sentence_transformers
+python-dotenv
+qdrant-client
+torch
