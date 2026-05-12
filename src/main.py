@@ -29,6 +29,10 @@ PROJECT_ROOT = os.path.dirname(
 )
 
 def is_online():
+    """
+    Check if the machine is online by connecting to a public DNS server.
+    Exits the program if offline.
+    """
     try:
         socket.create_connection(("8.8.8.8", 53), timeout=5)
     except OSError as e:
@@ -36,6 +40,11 @@ def is_online():
         sys.exit(1)
 
 def is_qdrant_running():
+    """
+    Check if Qdrant is running locally on port 6333.
+    Returns:
+        bool: True if Qdrant is running, False otherwise.
+    """
     try:
         socket.create_connection(
             ("localhost", 6333),
@@ -46,6 +55,9 @@ def is_qdrant_running():
         return False
 
 def ensure_qdrant():
+    """
+    Ensure Qdrant is running, start it with Docker Compose if not.
+    """
     if is_qdrant_running():
         print("Qdrant already running")
         return
@@ -63,19 +75,38 @@ def ensure_qdrant():
         sys.exit(1)
 
 def safe_str(val):
-    """Convert to string, handling NaN/None."""
+    """
+    Convert a value to string, handling NaN/None.
+    Args:
+        val: Value to convert.
+    Returns:
+        str: String representation or empty string.
+    """
     if pd.isna(val):
         return ""
     return str(val)
 
 def recipe_to_text(row):
+    """
+    Convert a recipe row to a formatted text string.
+    Args:
+        row (pd.Series): Recipe row.
+    Returns:
+        str: Formatted recipe text.
+    """
     title = safe_str(row["Title"])
     ingredients = safe_str(row["Ingredients"])
     instructions = safe_str(row["Instructions"])
     return f"Title: {title}\nIngredients: {ingredients}\nInstructions: {instructions}".strip()
 
 def make_id(text):
-    """Generate a numeric ID from MD5 hash."""
+    """
+    Generate a numeric ID from MD5 hash.
+    Args:
+        text (str): Input text.
+    Returns:
+        int: 64-bit integer ID.
+    """
     hash_hex = hashlib.md5(text.encode()).hexdigest()
     # Convert first 16 hex characters to a 64-bit integer
     return int(hash_hex[:16], 16)
@@ -259,7 +290,14 @@ print(f"Dataset has {len(set(all_ids))} unique hashes out of {len(df)} recipes")
 ###############################
 
 def retrieve_recipes(query, top_n=5):
-    """Retrieve the most relevant recipes for a given query."""
+    """
+    Retrieve the most relevant recipes for a given query.
+    Args:
+        query (str): User query.
+        top_n (int): Number of top results to return.
+    Returns:
+        list: List of recipes as dicts with title, ingredients, instructions, and score.
+    """
     # Step 1: Query embedding
     query_vector = embedder.encode(
         query,
@@ -299,6 +337,14 @@ When suggesting a recipe, mention its name and briefly describe why it fits the 
 Keep your answers concise and practical."""
 
 def message_with_context(question, context):
+    """
+    Build the user message with context for the LLM prompt.
+    Args:
+        question (str): User question.
+        context (str): Retrieved recipes context.
+    Returns:
+        str: Formatted user message.
+    """
     user_message = f"""Here are the most relevant recipes from the database:
 
 {context}
@@ -310,7 +356,14 @@ User question: {question}"""
 
 
 def build_rag_prompt(question, recipes):
-    """Build the messages list for the RAG call."""
+    """
+    Build the messages list for the RAG call.
+    Args:
+        question (str): User question.
+        recipes (list): List of recipe dicts.
+    Returns:
+        list: List of message dicts for the LLM.
+    """
     # Format retrieved recipes as context
     context = "\n\n---\n\n".join([
         f"**{r['title']}** (relevance: {r['score']})\n"
@@ -328,7 +381,14 @@ def build_rag_prompt(question, recipes):
 ##################
 
 def ask(question, retries=3):
-    """Full RAG pipeline: retrieve recipes, then ask the LLM."""
+    """
+    Full RAG pipeline: retrieve recipes, then ask the LLM.
+    Args:
+        question (str): User question.
+        retries (int): Number of retries for LLM call.
+    Returns:
+        str: LLM answer.
+    """
     # 1. Retrieve
     recipes = retrieve_recipes(question)
     print(f"\nRetrieved {len(recipes)} recipes:")
