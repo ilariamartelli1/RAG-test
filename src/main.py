@@ -6,6 +6,7 @@ import hashlib
 import subprocess
 import pandas as pd
 
+from typing import Any, List
 from torch import cuda
 from dotenv import load_dotenv
 from datasets import load_dataset
@@ -37,7 +38,7 @@ class Recipe(BaseModel):
     ingredients: str
     instructions: str
 
-def is_online():
+def is_online() -> None:
     """
     Check if the machine is online by connecting to a public DNS server.
     Exits the program if offline.
@@ -48,7 +49,7 @@ def is_online():
         print(f"Offline or DNS/network issue detected:\n{e}")
         sys.exit(1)
 
-def is_qdrant_running():
+def is_qdrant_running() -> bool:
     """
     Check if Qdrant is running locally on port 6333.
     Returns:
@@ -63,7 +64,7 @@ def is_qdrant_running():
     except OSError:
         return False
 
-def ensure_qdrant():
+def ensure_qdrant() -> None:
     """
     Ensure Qdrant is running, start it with Docker Compose if not.
     """
@@ -83,7 +84,7 @@ def ensure_qdrant():
         print(f"Failed to start docker compose:\n{e}")
         sys.exit(1)
 
-def safe_str(val):
+def safe_str(val: Any) -> str:
     """
     Convert a value to string, handling NaN/None.
     Args:
@@ -95,7 +96,7 @@ def safe_str(val):
         return ""
     return str(val)
 
-def recipe_to_text(row):
+def recipe_to_text(row: pd.Series) -> str:
     """
     Convert a recipe row to a formatted text string.
     Args:
@@ -108,7 +109,7 @@ def recipe_to_text(row):
     instructions = safe_str(row["Instructions"])
     return f"Title: {title}\nIngredients: {ingredients}\nInstructions: {instructions}".strip()
 
-def make_id(text):
+def make_id(text: str) -> int:
     """
     Generate a numeric ID from MD5 hash.
     Args:
@@ -204,43 +205,42 @@ print(f"{len(df)} recipes loaded. Will use embedding model: {EMBED_MODEL}")
 ####################
 
 for i in range(0, len(df), BATCH_SIZE):
-
-    batch_df = df.iloc[i:i+BATCH_SIZE]
-    texts = batch_df["full_text"].tolist()
+    batch_df: pd.DataFrame = df.iloc[i:i+BATCH_SIZE]
+    texts: list[str] = batch_df["full_text"].tolist()
 
     # Generate IDs for all texts first
-    ids = [make_id(text) for text in texts]
-    
+    ids: list[int] = [make_id(text) for text in texts]
+
     # Check which ones already exist in Qdrant
     try:
         existing_points = qdrant.retrieve(
             collection_name=COLLECTION,
             ids=ids,
         )
-        existing_ids = {point.id for point in existing_points}
+        existing_ids: set[int] = {point.id for point in existing_points}
     except Exception as e:
         # If retrieve fails, assume none exist (will try to insert)
-        existing_ids = set()
+        existing_ids: set[int] = set()
         print(f"Warning: retrieve() error at batch {i//BATCH_SIZE}, assuming 0 exist: {e}")
 
     # Filter to only texts that don't exist yet
-    new_indices = [j for j, id in enumerate(ids) if id not in existing_ids]
-    
+    new_indices: list[int] = [j for j, id in enumerate(ids) if id not in existing_ids]
+
     if not new_indices:
         # All recipes already exist, skip embedding
         print(f"{len(batch_df)} recipes already in collection, skipping...")
         continue
-    
-    # Only encode the texts that need to be inserted
-    texts_to_encode = [texts[j] for j in new_indices]
 
-    embeddings = embedder.encode(
+    # Only encode the texts that need to be inserted
+    texts_to_encode: list[str] = [texts[j] for j in new_indices]
+
+    embeddings: list[list[float]] = embedder.encode(
         texts_to_encode,
         batch_size=embedding_batch_size,
         show_progress_bar=False,
     ).tolist()
 
-    points = []
+    points: list[PointStruct] = []
 
     for embed_idx, data_idx in enumerate(new_indices):
         row = batch_df.iloc[data_idx]
@@ -301,7 +301,7 @@ print(f"Dataset has {len(set(all_ids))} unique hashes out of {len(df)} recipes")
 ## Recipe Retrieval Function ##
 ###############################
 
-def retrieve_recipes(query, top_n=5):
+def retrieve_recipes(query: str, top_n: int = 5) -> List[dict]:
     """
     Retrieve the most relevant recipes for a given query.
     Args:
@@ -326,7 +326,7 @@ def retrieve_recipes(query, top_n=5):
     )
     
     # Step 3: Format results using Pydantic validation
-    recipes = []
+    recipes: List[dict] = []
     for point in results.points:
         # Validate payload with Recipe model
         recipe = Recipe(**point.payload)
@@ -350,7 +350,7 @@ If the retrieved recipes don't contain enough information to answer, say so hone
 When suggesting a recipe, mention its name and briefly describe why it fits the user's request.
 Keep your answers concise and practical."""
 
-def message_with_context(question, context):
+def message_with_context(question: str, context: str) -> str:
     """
     Build the user message with context for the LLM prompt.
     Args:
@@ -369,7 +369,7 @@ User question: {question}"""
     return user_message
 
 
-def build_rag_prompt(question, recipes):
+def build_rag_prompt(question: str, recipes: list[dict]) -> list[dict]:
     """
     Build the messages list for the RAG call.
     Args:
@@ -394,7 +394,7 @@ def build_rag_prompt(question, recipes):
 ## Ask Function ##
 ##################
 
-def ask(question, retries=3):
+def ask(question: str, retries: int = 3) -> str:
     """
     Full RAG pipeline: retrieve recipes, then ask the LLM.
     Args:
