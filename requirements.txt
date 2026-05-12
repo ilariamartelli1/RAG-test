@@ -5,3 +5,4 @@ sentence_transformers
 python-dotenv
 qdrant-client
 torch
+pydantic

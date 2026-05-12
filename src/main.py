@@ -13,6 +13,7 @@ from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from anthropic import Anthropic
+from pydantic import BaseModel
 
 ###############
 ## Utilities ##
@@ -27,6 +28,14 @@ EMBED_MODEL = "BAAI/bge-base-en-v1.5"
 PROJECT_ROOT = os.path.dirname(
     os.path.abspath(__file__)
 )
+
+class Recipe(BaseModel):
+    """
+    Pydantic model for recipe payloads.
+    """
+    title: str
+    ingredients: str
+    instructions: str
 
 def is_online():
     """
@@ -237,14 +246,17 @@ for i in range(0, len(df), BATCH_SIZE):
         row = batch_df.iloc[data_idx]
         text = texts[data_idx]
 
+        # Use Pydantic model for payload validation
+        recipe_payload = Recipe(
+            title=safe_str(row.Title),
+            ingredients=safe_str(row.Ingredients),
+            instructions=safe_str(row.Instructions),
+        ).model_dump()
+
         point = PointStruct(
             id=ids[data_idx],
             vector=embeddings[embed_idx],
-            payload={
-                "title": safe_str(row.Title),
-                "ingredients": safe_str(row.Ingredients),
-                "instructions": safe_str(row.Instructions),
-            }
+            payload=recipe_payload
         )
 
         points.append(point)
@@ -313,13 +325,15 @@ def retrieve_recipes(query, top_n=5):
         with_payload=True,
     )
     
-    # Step 3: Format results
+    # Step 3: Format results using Pydantic validation
     recipes = []
     for point in results.points:
+        # Validate payload with Recipe model
+        recipe = Recipe(**point.payload)
         recipes.append({
-            "title": point.payload["title"],
-            "ingredients": point.payload["ingredients"],
-            "instructions": point.payload["instructions"],
+            "title": recipe.title,
+            "ingredients": recipe.ingredients,
+            "instructions": recipe.instructions,
             "score": round(point.score, 4),
         })
     return recipes
