@@ -1,6 +1,8 @@
 import pandas as pd
 from datasets import load_dataset
 
+from .record_models import SourceRecord
+
 
 def load_dataset_dataframe(
     dataset_name: str,
@@ -23,3 +25,38 @@ def load_dataset_dataframe(
     if drop_columns is not None:
         dataframe = dataframe.drop(columns=drop_columns)
     return dataframe
+
+
+def dataframe_to_records(dataframe: pd.DataFrame, source: str) -> list[SourceRecord]:
+    """
+    Convert dataset rows to source records without modifying the DataFrame.
+
+    Args:
+        dataframe (pd.DataFrame): Dataset rows and their field values.
+        source (str): Dataset source recorded in metadata.
+
+    Returns:
+        list[SourceRecord]: One record per row, in DataFrame order.
+
+    Raises:
+        ValueError: If column names are non-string or duplicated, or row
+            identifiers are not unique when converted to strings.
+    """
+    if not dataframe.columns.is_unique or not all(
+        isinstance(column, str) for column in dataframe.columns
+    ):
+        raise ValueError("Dataset column names must be unique strings")
+
+    row_ids = [str(index) for index in dataframe.index]
+    if len(set(row_ids)) != len(row_ids):
+        raise ValueError("Dataset row identifiers must be unique as strings")
+
+    return [
+        SourceRecord(
+            content=dict(zip(dataframe.columns, row[1:], strict=True)),
+            metadata={"source": source, "row_id": row_id},
+        )
+        for row_id, row in zip(
+            row_ids, dataframe.itertuples(index=True, name=None), strict=True
+        )
+    ]

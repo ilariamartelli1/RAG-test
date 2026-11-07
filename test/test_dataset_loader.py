@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pandas as pd
 from pandas.testing import assert_frame_equal
 
-from src.processing.dataset_loader import load_dataset_dataframe
+from src.processing.dataset_loader import dataframe_to_records, load_dataset_dataframe
 
 
 class DatasetLoaderTests(unittest.TestCase):
@@ -40,6 +40,43 @@ class DatasetLoaderTests(unittest.TestCase):
     def test_loading_errors_propagate(self, load_dataset_mock) -> None:
         with self.assertRaisesRegex(RuntimeError, "unavailable"):
             load_dataset_dataframe("example/dataset", "train")
+
+    def test_converts_rows_to_records_with_source_and_row_ids(self) -> None:
+        dataframe = pd.DataFrame(
+            {"title": ["First", "Second"], "count": [1, 2], "tags": [["a"], []]},
+            index=[10, 20],
+        )
+        original = dataframe.copy(deep=True)
+
+        records = dataframe_to_records(dataframe, "example/dataset")
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].content, {"title": "First", "count": 1, "tags": ["a"]})
+        self.assertEqual(records[0].metadata, {"source": "example/dataset", "row_id": "10"})
+        self.assertEqual(records[1].content, {"title": "Second", "count": 2, "tags": []})
+        self.assertEqual(records[1].metadata, {"source": "example/dataset", "row_id": "20"})
+        assert_frame_equal(dataframe, original)
+
+    def test_converts_empty_dataframe(self) -> None:
+        self.assertEqual(dataframe_to_records(pd.DataFrame(columns=["title"]), "dataset"), [])
+
+    def test_converts_rows_without_columns(self) -> None:
+        records = dataframe_to_records(pd.DataFrame(index=[1, 2]), "dataset")
+
+        self.assertEqual([record.content for record in records], [{}, {}])
+        self.assertEqual([record.metadata["row_id"] for record in records], ["1", "2"])
+
+    def test_rejects_columns_that_cannot_form_field_mapping(self) -> None:
+        for columns in (["field", "field"], ["field", 1]):
+            dataframe = pd.DataFrame([[1, 2]], columns=columns)
+            with self.subTest(columns=columns), self.assertRaisesRegex(ValueError, "column names"):
+                dataframe_to_records(dataframe, "dataset")
+
+    def test_rejects_row_ids_that_collide_as_strings(self) -> None:
+        dataframe = pd.DataFrame({"field": [1, 2]}, index=pd.Index([1, "1"], dtype=object))
+
+        with self.assertRaisesRegex(ValueError, "row identifiers"):
+            dataframe_to_records(dataframe, "dataset")
 
 
 if __name__ == "__main__":
