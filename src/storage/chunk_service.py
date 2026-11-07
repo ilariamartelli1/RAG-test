@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 
-if __package__:
-    from .id_utils import make_id
-    from .chunk_models import ChunkPayload
+if "." in __package__:
+    from ..id_utils import make_id
+    from ..chunk_models import ChunkPayload
 else:
     from id_utils import make_id
     from chunk_models import ChunkPayload

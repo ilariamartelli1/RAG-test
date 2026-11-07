@@ -4,10 +4,10 @@ import time
 from typing import TYPE_CHECKING, Protocol
 
 if __package__:
-    from .chunk_service import retrieve_chunks
+    from .storage.chunk_service import retrieve_chunks
     from .prompt_utils import build_rag_prompt
 else:
-    from chunk_service import retrieve_chunks
+    from storage.chunk_service import retrieve_chunks
     from prompt_utils import build_rag_prompt
 
 if TYPE_CHECKING:
