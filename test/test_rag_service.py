@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from src.chunk_models import ChunkPayload
-from src.rag_service import ask
+from src.rag.rag_service import ask
 
 
 class RagServiceTests(unittest.TestCase):
@@ -19,7 +19,7 @@ class RagServiceTests(unittest.TestCase):
             "system_prompt": "Instructions",
         }
 
-    @patch("src.rag_service.retrieve_chunks")
+    @patch("src.rag.rag_service.retrieve_chunks")
     def test_builds_prompt_and_returns_model_answer(self, retrieve) -> None:
         retrieve.return_value = [(ChunkPayload(text="Context", metadata={}), 0.9)]
         self.llm.generate.return_value = " Answer "
@@ -40,7 +40,7 @@ class RagServiceTests(unittest.TestCase):
             }],
         )
 
-    @patch("src.rag_service.retrieve_chunks", return_value=[])
+    @patch("src.rag.rag_service.retrieve_chunks", return_value=[])
     def test_accepts_provider_without_anthropic_client_interface(self, retrieve) -> None:
         class LocalProvider:
             def generate(self, messages: list[dict[str, str]], system_prompt: str) -> str:
@@ -50,8 +50,8 @@ class RagServiceTests(unittest.TestCase):
         with patch("builtins.print"):
             self.assertEqual(ask("Question", **self.options), "Local answer")
 
-    @patch("src.rag_service.time.sleep")
-    @patch("src.rag_service.retrieve_chunks", return_value=[])
+    @patch("src.rag.rag_service.time.sleep")
+    @patch("src.rag.rag_service.retrieve_chunks", return_value=[])
     def test_retries_model_failures(self, retrieve, sleep) -> None:
         self.llm.generate.side_effect = [
             RuntimeError("unavailable"),
@@ -64,8 +64,8 @@ class RagServiceTests(unittest.TestCase):
         self.assertEqual(self.llm.generate.call_count, 2)
         sleep.assert_called_once_with(1)
 
-    @patch("src.rag_service.time.sleep")
-    @patch("src.rag_service.retrieve_chunks", return_value=[])
+    @patch("src.rag.rag_service.time.sleep")
+    @patch("src.rag.rag_service.retrieve_chunks", return_value=[])
     def test_raises_after_last_attempt(self, retrieve, sleep) -> None:
         self.llm.generate.side_effect = RuntimeError("unavailable")
 

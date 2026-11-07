@@ -1,6 +1,6 @@
 import unittest
 
-from src.prompt_utils import build_rag_prompt, message_with_context
+from src.rag.prompt_utils import build_rag_prompt, message_with_context
 
 
 class PromptUtilsTests(unittest.TestCase):

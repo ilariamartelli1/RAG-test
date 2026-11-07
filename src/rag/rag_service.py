@@ -3,12 +3,12 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Protocol
 
-if __package__:
-    from .storage.chunk_service import retrieve_chunks
-    from .prompt_utils import build_rag_prompt
+if "." in __package__:
+    from ..storage.chunk_service import retrieve_chunks
 else:
     from storage.chunk_service import retrieve_chunks
-    from prompt_utils import build_rag_prompt
+
+from .prompt_utils import build_rag_prompt
 
 if TYPE_CHECKING:
     from qdrant_client import QdrantClient

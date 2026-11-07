@@ -17,7 +17,7 @@ if __package__:
     from .chunk_models import ChunkPayload
     from .network_utils import is_online
     from .storage.qdrant_service import ensure_qdrant
-    from .rag_service import ask
+    from .rag.rag_service import ask
 else:
     from providers.anthropic_provider import AnthropicProvider
     from storage.chunk_service import store_chunks
@@ -26,7 +26,7 @@ else:
     from chunk_models import ChunkPayload
     from network_utils import is_online
     from storage.qdrant_service import ensure_qdrant
-    from rag_service import ask
+    from rag.rag_service import ask
 
 ###############
 ## Utilities ##
