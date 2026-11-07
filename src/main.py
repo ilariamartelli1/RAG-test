@@ -13,12 +13,14 @@ from anthropic import Anthropic
 from pydantic import BaseModel
 
 if __package__:
+    from .dataset_utils import row_to_text
     from .id_utils import make_id
     from .network_utils import is_online
     from .prompt_utils import message_with_context
     from .qdrant_service import ensure_qdrant
     from .text_utils import safe_str
 else:
+    from dataset_utils import row_to_text
     from id_utils import make_id
     from network_utils import is_online
     from prompt_utils import message_with_context
@@ -46,19 +48,6 @@ class Recipe(BaseModel):
     title: str
     ingredients: str
     instructions: str
-
-def recipe_to_text(row: pd.Series) -> str:
-    """
-    Convert a recipe row to a formatted text string.
-    Args:
-        row (pd.Series): Recipe row.
-    Returns:
-        str: Formatted recipe text.
-    """
-    title = safe_str(row["Title"])
-    ingredients = safe_str(row["Ingredients"])
-    instructions = safe_str(row["Instructions"])
-    return f"Title: {title}\nIngredients: {ingredients}\nInstructions: {instructions}".strip()
 
 ############
 ## Config ##
@@ -132,7 +121,7 @@ df = ds.to_pandas().drop(
 )
 
 df["full_text"] = df.apply(
-    recipe_to_text,
+    row_to_text,
     axis=1
 )
 
