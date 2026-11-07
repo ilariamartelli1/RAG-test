@@ -2,37 +2,38 @@ import os
 import time
 import pandas as pd
 
-from typing import List
 from torch import cuda
 from dotenv import load_dotenv
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, VectorParams
 from anthropic import Anthropic
-from pydantic import BaseModel
 
 if __package__:
-    from .dataset_utils import row_to_text
+    from .chunk_service import retrieve_chunks, store_chunks
+    from .dataset_utils import chunk_dataset_row, row_to_text
     from .id_utils import make_id
+    from .chunk_models import ChunkPayload
     from .network_utils import is_online
     from .prompt_utils import build_rag_prompt
     from .qdrant_service import ensure_qdrant
-    from .text_utils import safe_str
 else:
-    from dataset_utils import row_to_text
+    from chunk_service import retrieve_chunks, store_chunks
+    from dataset_utils import chunk_dataset_row, row_to_text
     from id_utils import make_id
+    from chunk_models import ChunkPayload
     from network_utils import is_online
     from prompt_utils import build_rag_prompt
     from qdrant_service import ensure_qdrant
-    from text_utils import safe_str
 
 ###############
 ## Utilities ##
 ###############
 
-COLLECTION = "recipes"
+COLLECTION = "dataset_chunks"
 BATCH_SIZE = 256
+DATASET_NAME = "Hieu-Pham/kaggle_food_recipes"
 
 LLM_MODEL = "claude-haiku-4-5"
 EMBED_MODEL = "BAAI/bge-base-en-v1.5"
@@ -40,14 +41,6 @@ EMBED_MODEL = "BAAI/bge-base-en-v1.5"
 PROJECT_ROOT = os.path.dirname(
     os.path.abspath(__file__)
 )
-
-class Recipe(BaseModel):
-    """
-    Pydantic model for recipe payloads.
-    """
-    title: str
-    ingredients: str
-    instructions: str
 
 ############
 ## Config ##
@@ -112,7 +105,7 @@ if not collection_exists:
 ###############
 
 ds = load_dataset(
-    "Hieu-Pham/kaggle_food_recipes",
+    DATASET_NAME,
     split="train"
 )
 
@@ -134,75 +127,25 @@ print(f"{len(df)} recipes loaded. Will use embedding model: {EMBED_MODEL}")
 
 for i in range(0, len(df), BATCH_SIZE):
     batch_df: pd.DataFrame = df.iloc[i:i+BATCH_SIZE]
-    texts: list[str] = batch_df["full_text"].tolist()
-
-    # Generate IDs for all texts first
-    ids: list[int] = [make_id(text) for text in texts]
-
-    # Check which ones already exist in Qdrant
-    try:
-        existing_points = qdrant.retrieve(
-            collection_name=COLLECTION,
-            ids=ids,
+    chunks = [
+        ChunkPayload(
+            text=chunk.text,
+            metadata={
+                "source": DATASET_NAME,
+                "row_id": chunk.row_id,
+                "chunk_index": chunk.chunk_index,
+                "field_name": chunk.field_name,
+            },
         )
-        existing_ids: set[int] = {point.id for point in existing_points}
-    except Exception as e:
-        # If retrieve fails, assume none exist (will try to insert)
-        existing_ids: set[int] = set()
-        print(f"Warning: retrieve() error at batch {i//BATCH_SIZE}, assuming 0 exist: {e}")
+        for row_id, row in batch_df.iterrows()
+        for chunk in chunk_dataset_row(row.drop(labels=["full_text"]), str(row_id))
+    ]
+    added = store_chunks(qdrant, embedder, COLLECTION, chunks, embedding_batch_size)
+    print(f"Progress: {min(i+BATCH_SIZE, len(df))}/{len(df)} (+{added} new chunks)")
 
-    # Filter to only texts that don't exist yet
-    new_indices: list[int] = [j for j, id in enumerate(ids) if id not in existing_ids]
+print(f"Done! Total chunks in collection '{COLLECTION}': {qdrant.count(COLLECTION).count}")
 
-    if not new_indices:
-        # All recipes already exist, skip embedding
-        print(f"{len(batch_df)} recipes already in collection, skipping...")
-        continue
-
-    # Only encode the texts that need to be inserted
-    texts_to_encode: list[str] = [texts[j] for j in new_indices]
-
-    embeddings: list[list[float]] = embedder.encode(
-        texts_to_encode,
-        batch_size=embedding_batch_size,
-        show_progress_bar=False,
-    ).tolist()
-
-    points: list[PointStruct] = []
-
-    for embed_idx, data_idx in enumerate(new_indices):
-        row = batch_df.iloc[data_idx]
-        text = texts[data_idx]
-
-        # Use Pydantic model for payload validation
-        recipe_payload = Recipe(
-            title=safe_str(row.Title),
-            ingredients=safe_str(row.Ingredients),
-            instructions=safe_str(row.Instructions),
-        ).model_dump()
-
-        point = PointStruct(
-            id=ids[data_idx],
-            vector=embeddings[embed_idx],
-            payload=recipe_payload
-        )
-
-        points.append(point)
-    
-    try:
-        qdrant.upsert(collection_name=COLLECTION, points=points)
-        print(f"Progress: {min(i+BATCH_SIZE, len(df))}/{len(df)} (+{len(points)} new)")
-    except Exception as e:
-        print(f"ERROR upserting points: {e}")
-        print(f"First point ID: {points[0].id if points else 'No points'}")
-        print(f"First point vector length: {len(points[0].vector) if points else 0}")
-        raise
-
-print(f"Done! Total recipes in collection '{COLLECTION}': {qdrant.count(COLLECTION).count}")
-
-# Verify which recipes are missing
-print("\nVerifying ingestion...")
-# Check for duplicate hashes in the dataset
+print("\nChecking for duplicate rows...")
 all_ids = []
 duplicate_ids = {}
 
@@ -226,56 +169,14 @@ else:
 print(f"Dataset has {len(set(all_ids))} unique hashes out of {len(df)} recipes")
 
 ###############################
-## Recipe Retrieval Function ##
-###############################
-
-def retrieve_recipes(query: str, top_n: int = 5) -> List[dict]:
-    """
-    Retrieve the most relevant recipes for a given query.
-    Args:
-        query (str): User query.
-        top_n (int): Number of top results to return.
-    Returns:
-        list: List of recipes as dicts with title, ingredients, instructions, and score.
-    """
-    # Step 1: Query embedding
-    query_vector = embedder.encode(
-        query,
-        batch_size=embedding_batch_size,
-        show_progress_bar=False,
-    ).tolist()
-    
-    # Step 2: Search in Qdrant
-    results = qdrant.query_points(
-        collection_name=COLLECTION,
-        query=query_vector,
-        limit=top_n,
-        with_payload=True,
-    )
-    
-    # Step 3: Format results using Pydantic validation
-    recipes: List[dict] = []
-    for point in results.points:
-        # Validate payload with Recipe model
-        recipe = Recipe(**point.payload)
-        recipes.append({
-            "title": recipe.title,
-            "ingredients": recipe.ingredients,
-            "instructions": recipe.instructions,
-            "score": round(point.score, 4),
-        })
-    return recipes
-
-###############################
 ## RAG Prompt Build Function ##
 ###############################
 
-RAG_SYSTEM_PROMPT = """You are a helpful cooking assistant. You answer questions about recipes.
+RAG_SYSTEM_PROMPT = """You are a helpful assistant.
 
-You will be given a set of recipes retrieved from a database. Use ONLY these recipes to answer.
-If the retrieved recipes don't contain enough information to answer, say so honestly.
+You will be given relevant context retrieved from a database. Use ONLY this context to answer.
+If the context doesn't contain enough information to answer, say so honestly.
 
-When suggesting a recipe, mention its name and briefly describe why it fits the user's request.
 Keep your answers concise and practical."""
 
 ##################
@@ -284,7 +185,7 @@ Keep your answers concise and practical."""
 
 def ask(question: str, retries: int = 3) -> str:
     """
-    Full RAG pipeline: retrieve recipes, then ask the LLM.
+    Full RAG pipeline: retrieve context, then ask the LLM.
     Args:
         question (str): User question.
         retries (int): Number of retries for LLM call.
@@ -292,20 +193,14 @@ def ask(question: str, retries: int = 3) -> str:
         str: LLM answer.
     """
     # 1. Retrieve
-    recipes = retrieve_recipes(question)
-    print(f"\nRetrieved {len(recipes)} recipes:")
-    for r in recipes:
-        print(f"  {r['score']:.4f}  {r['title']}")
+    results = retrieve_chunks(qdrant, embedder, COLLECTION, question, embedding_batch_size)
+    print(f"\nRetrieved {len(results)} chunks:")
+    for chunk, score in results:
+        print(f"  {score:.4f}  {chunk.metadata}")
     print()
     
     # 2. Build the prompt
-    chunks = [
-        f"**{r['title']}** (relevance: {r['score']})\n"
-        f"Ingredients: {r['ingredients']}\n"
-        f"Instructions: {r['instructions']}"
-        for r in recipes
-    ]
-    messages = build_rag_prompt(question, chunks)
+    messages = build_rag_prompt(question, [chunk.text for chunk, _ in results])
     
     # 3. Generate the response
     for attempt in range(retries):
