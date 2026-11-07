@@ -47,13 +47,22 @@ def ask(
         retries (int): Number of attempts to generate an answer.
 
     Returns:
-        str: Language model answer.
+        str: Language model answer, or a message if no context was retrieved.
     """
     results = retrieve_chunks(qdrant, embedder, collection, question, embedding_batch_size)
     print(f"\nRetrieved {len(results)} chunks:")
     for chunk, score in results:
         print(f"  {score:.4f}  {chunk.metadata}")
     print()
+
+    if not results:
+        answer = (
+            "No relevant information was retrieved for your question. "
+            "If the collection contains relevant information, try lowering "
+            "the retrieval score threshold."
+        )
+        print(f"Answer:\n{answer}")
+        return answer
 
     messages = build_rag_prompt(question, [chunk.text for chunk, _ in results])
 
