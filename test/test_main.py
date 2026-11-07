@@ -3,12 +3,19 @@ import os
 import runpy
 import unittest
 import warnings
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
 
 class MainTests(unittest.TestCase):
+    def test_project_root_contains_docker_compose(self) -> None:
+        main_module = importlib.import_module("src.main")
+
+        self.assertEqual(Path(main_module.PROJECT_ROOT), Path(main_module.__file__).resolve().parent.parent)
+        self.assertTrue((Path(main_module.PROJECT_ROOT) / "docker-compose.yml").is_file())
+
     def test_import_does_not_run_pipeline(self) -> None:
         with (
             patch("src.network_utils.is_online") as online,

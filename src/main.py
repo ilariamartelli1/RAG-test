@@ -38,7 +38,7 @@ LLM_MODEL = "claude-haiku-4-5"
 EMBED_MODEL = "BAAI/bge-base-en-v1.5"
 
 PROJECT_ROOT = os.path.dirname(
-    os.path.abspath(__file__)
+    os.path.dirname(os.path.abspath(__file__))
 )
 
 RAG_SYSTEM_PROMPT = """You are a helpful assistant.
