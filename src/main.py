@@ -12,7 +12,7 @@ from anthropic import Anthropic
 if __package__:
     from .chunk_service import store_chunks
     from .dataset_utils import chunk_dataset_row, row_to_text
-    from .id_utils import make_id
+    from .id_utils import group_positions_by_id
     from .chunk_models import ChunkPayload
     from .network_utils import is_online
     from .qdrant_service import ensure_qdrant
@@ -20,7 +20,7 @@ if __package__:
 else:
     from chunk_service import store_chunks
     from dataset_utils import chunk_dataset_row, row_to_text
-    from id_utils import make_id
+    from id_utils import group_positions_by_id
     from chunk_models import ChunkPayload
     from network_utils import is_online
     from qdrant_service import ensure_qdrant
@@ -145,19 +145,7 @@ for i in range(0, len(df), BATCH_SIZE):
 print(f"Done! Total chunks in collection '{COLLECTION}': {qdrant.count(COLLECTION).count}")
 
 print("\nChecking for duplicate rows...")
-all_ids = []
-duplicate_ids = {}
-
-for i in range(len(df)):
-    text = df.iloc[i]["full_text"]
-    id = make_id(text)
-    all_ids.append(id)
-    
-    if id in duplicate_ids:
-        duplicate_ids[id].append(i)
-    else:
-        duplicate_ids[id] = [i]
-
+duplicate_ids = group_positions_by_id(df["full_text"])
 duplicates = {k: v for k, v in duplicate_ids.items() if len(v) > 1}
 
 if duplicates:
@@ -165,7 +153,7 @@ if duplicates:
 else:
     print("No duplicate hashes in dataset")
 
-print(f"Dataset has {len(set(all_ids))} unique hashes out of {len(df)} recipes")
+print(f"Dataset has {len(duplicate_ids)} unique hashes out of {len(df)} recipes")
 
 ###############################
 ## RAG Prompt Build Function ##
