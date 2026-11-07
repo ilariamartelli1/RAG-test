@@ -2,10 +2,13 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-if __package__:
-    from .text_utils import safe_str
+from .record_models import SourceRecord
+from .text_utils import safe_str
+
+if "." in __package__:
+    from ..chunk_models import ChunkPayload
 else:
-    from text_utils import safe_str
+    from chunk_models import ChunkPayload
 
 
 @dataclass(frozen=True)
@@ -87,3 +90,42 @@ def chunk_dataset_row(
             field_text = field_text[end:]
 
     return chunks
+
+
+def chunk_dataset_record(
+    record: SourceRecord, max_chunk_chars: int = 1000
+) -> list[ChunkPayload]:
+    """
+    Split a dataset record into chunks while preserving its source metadata.
+
+    Args:
+        record (SourceRecord): Dataset fields and metadata, including a string row_id.
+        max_chunk_chars (int): Maximum characters per chunk, including labels.
+
+    Returns:
+        list[ChunkPayload]: Text chunks with source and chunk metadata.
+
+    Raises:
+        ValueError: If the record is not a dataset row, lacks a valid row_id,
+            or contains reserved chunk metadata.
+    """
+    if not isinstance(record.content, dict):
+        raise ValueError("Dataset record content must be a field mapping")
+    row_id = record.metadata.get("row_id")
+    if not isinstance(row_id, str) or not row_id:
+        raise ValueError("Dataset record metadata must contain a non-empty string row_id")
+    if "chunk_index" in record.metadata or "field_name" in record.metadata:
+        raise ValueError("Dataset record metadata contains reserved chunk fields")
+
+    row = pd.Series(record.content, dtype=object)
+    return [
+        ChunkPayload(
+            text=chunk.text,
+            metadata={
+                **record.metadata,
+                "chunk_index": chunk.chunk_index,
+                "field_name": chunk.field_name,
+            },
+        )
+        for chunk in chunk_dataset_row(row, row_id, max_chunk_chars)
+    ]
