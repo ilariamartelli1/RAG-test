@@ -3,7 +3,6 @@ import pandas as pd
 
 from torch import cuda
 from dotenv import load_dotenv
-from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
@@ -12,6 +11,7 @@ from anthropic import Anthropic
 if __package__:
     from .providers.anthropic_provider import AnthropicProvider
     from .storage.chunk_service import store_chunks
+    from .processing.dataset_loader import load_dataset_dataframe
     from .processing.dataset_utils import chunk_dataset_row, row_to_text
     from .id_utils import group_positions_by_id
     from .chunk_models import ChunkPayload
@@ -21,6 +21,7 @@ if __package__:
 else:
     from providers.anthropic_provider import AnthropicProvider
     from storage.chunk_service import store_chunks
+    from processing.dataset_loader import load_dataset_dataframe
     from processing.dataset_utils import chunk_dataset_row, row_to_text
     from id_utils import group_positions_by_id
     from chunk_models import ChunkPayload
@@ -105,13 +106,10 @@ if not collection_exists:
 ## Load data ##
 ###############
 
-ds = load_dataset(
+df = load_dataset_dataframe(
     DATASET_NAME,
-    split="train"
-)
-
-df = ds.to_pandas().drop(
-    columns=["Unnamed: 0", "Image_Name"]
+    split="train",
+    drop_columns=["Unnamed: 0", "Image_Name"],
 )
 
 df["full_text"] = df.apply(
