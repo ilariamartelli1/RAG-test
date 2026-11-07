@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if __package__:
     from .chunk_service import retrieve_chunks
@@ -11,9 +11,15 @@ else:
     from prompt_utils import build_rag_prompt
 
 if TYPE_CHECKING:
-    from anthropic import Anthropic
     from qdrant_client import QdrantClient
     from sentence_transformers import SentenceTransformer
+
+
+class LLMProvider(Protocol):
+    """Interface for generating an answer from messages and instructions."""
+
+    def generate(self, messages: list[dict[str, str]], system_prompt: str) -> str:
+        ...
 
 
 def ask(
@@ -23,8 +29,7 @@ def ask(
     embedder: SentenceTransformer,
     collection: str,
     embedding_batch_size: int,
-    llm: Anthropic,
-    llm_model: str,
+    llm: LLMProvider,
     system_prompt: str,
     retries: int = 3,
 ) -> str:
@@ -37,8 +42,7 @@ def ask(
         embedder (SentenceTransformer): Model used to embed the question.
         collection (str): Qdrant collection to search.
         embedding_batch_size (int): Batch size used by the embedding model.
-        llm (Anthropic): Client used to generate the answer.
-        llm_model (str): Name of the language model.
+        llm (LLMProvider): Provider used to generate the answer.
         system_prompt (str): Instructions supplied to the language model.
         retries (int): Number of attempts to generate an answer.
 
@@ -55,12 +59,7 @@ def ask(
 
     for attempt in range(retries):
         try:
-            response = llm.messages.create(
-                model=llm_model,
-                max_tokens=1024,
-                system=system_prompt,
-                messages=messages,
-            )
+            response = llm.generate(messages=messages, system_prompt=system_prompt)
             break
         except Exception as e:
             print(f"Attempt {attempt+1} failed: {e}")
@@ -68,6 +67,6 @@ def ask(
                 raise
             time.sleep(1)
 
-    answer = response.content[0].text.strip()
+    answer = response.strip()
     print(f"Answer:\n{answer}")
     return answer

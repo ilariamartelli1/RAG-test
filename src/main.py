@@ -10,6 +10,7 @@ from qdrant_client.models import Distance, VectorParams
 from anthropic import Anthropic
 
 if __package__:
+    from .providers.anthropic_provider import AnthropicProvider
     from .chunk_service import store_chunks
     from .dataset_utils import chunk_dataset_row, row_to_text
     from .id_utils import group_positions_by_id
@@ -18,6 +19,7 @@ if __package__:
     from .qdrant_service import ensure_qdrant
     from .rag_service import ask
 else:
+    from providers.anthropic_provider import AnthropicProvider
     from chunk_service import store_chunks
     from dataset_utils import chunk_dataset_row, row_to_text
     from id_utils import group_positions_by_id
@@ -172,7 +174,6 @@ ask(
     embedder=embedder,
     collection=COLLECTION,
     embedding_batch_size=embedding_batch_size,
-    llm=claude,
-    llm_model=LLM_MODEL,
+    llm=AnthropicProvider(claude, LLM_MODEL),
     system_prompt=RAG_SYSTEM_PROMPT,
 )
