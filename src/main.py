@@ -5,7 +5,7 @@ import socket
 import subprocess
 import pandas as pd
 
-from typing import Any, List
+from typing import List
 from torch import cuda
 from dotenv import load_dotenv
 from datasets import load_dataset
@@ -17,8 +17,10 @@ from pydantic import BaseModel
 
 if __package__:
     from .id_utils import make_id
+    from .text_utils import safe_str
 else:
     from id_utils import make_id
+    from text_utils import safe_str
 
 ###############
 ## Utilities ##
@@ -87,18 +89,6 @@ def ensure_qdrant() -> None:
     except subprocess.CalledProcessError as e:
         print(f"Failed to start docker compose:\n{e}")
         sys.exit(1)
-
-def safe_str(val: Any) -> str:
-    """
-    Convert a value to string, handling NaN/None.
-    Args:
-        val: Value to convert.
-    Returns:
-        str: String representation or empty string.
-    """
-    if pd.isna(val):
-        return ""
-    return str(val)
 
 def recipe_to_text(row: pd.Series) -> str:
     """
