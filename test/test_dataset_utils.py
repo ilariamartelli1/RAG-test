@@ -6,7 +6,7 @@ from src.dataset_utils import row_to_text
 
 
 class DatasetUtilsTests(unittest.TestCase):
-    def test_formats_recipe_fields(self) -> None:
+    def test_formats_fields(self) -> None:
         row = pd.Series({
             "Title": "Soup",
             "Ingredients": "Tomato",
