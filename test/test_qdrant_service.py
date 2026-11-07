@@ -51,11 +51,12 @@ class QdrantServiceTests(unittest.TestCase):
     @patch("src.storage.qdrant_service.wait_for_qdrant")
     @patch("src.storage.qdrant_service.is_qdrant_running", return_value=False)
     @patch("builtins.print")
-    def test_exits_when_docker_fails(self, print_mock, is_running, wait) -> None:
+    @patch("src.storage.qdrant_service.subprocess.run")
+    def test_exits_when_docker_fails(self, run, print_mock, is_running, wait) -> None:
         failure = subprocess.CalledProcessError(1, ["docker", "compose", "up", "-d"])
-        with patch("src.storage.qdrant_service.subprocess.run", side_effect=failure):
-            with self.assertRaises(SystemExit) as error:
-                ensure_qdrant("/project/src")
+        run.side_effect = failure
+        with self.assertRaises(SystemExit) as error:
+            ensure_qdrant("/project/src")
 
         self.assertEqual(error.exception.code, 1)
         is_running.assert_called_once_with()

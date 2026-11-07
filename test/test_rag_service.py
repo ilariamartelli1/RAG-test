@@ -20,12 +20,12 @@ class RagServiceTests(unittest.TestCase):
         }
 
     @patch("src.rag.rag_service.retrieve_chunks")
-    def test_builds_prompt_and_returns_model_answer(self, retrieve) -> None:
+    @patch("builtins.print")
+    def test_builds_prompt_and_returns_model_answer(self, print_mock, retrieve) -> None:
         retrieve.return_value = [(ChunkPayload(text="Context", metadata={}), 0.9)]
         self.llm.generate.return_value = " Answer "
 
-        with patch("builtins.print"):
-            result = ask("Question", **self.options)
+        result = ask("Question", **self.options)
 
         self.assertEqual(result, "Answer")
         retrieve.assert_called_once_with(self.qdrant, self.embedder, "documents", "Question", 16)
@@ -41,35 +41,36 @@ class RagServiceTests(unittest.TestCase):
         )
 
     @patch("src.rag.rag_service.retrieve_chunks", return_value=[])
-    def test_accepts_provider_without_anthropic_client_interface(self, retrieve) -> None:
+    @patch("builtins.print")
+    def test_accepts_provider_without_anthropic_client_interface(self, print_mock, retrieve) -> None:
         class LocalProvider:
             def generate(self, messages: list[dict[str, str]], system_prompt: str) -> str:
                 return "Local answer"
 
         self.options["llm"] = LocalProvider()
-        with patch("builtins.print"):
-            self.assertEqual(ask("Question", **self.options), "Local answer")
+        self.assertEqual(ask("Question", **self.options), "Local answer")
 
     @patch("src.rag.rag_service.time.sleep")
     @patch("src.rag.rag_service.retrieve_chunks", return_value=[])
-    def test_retries_model_failures(self, retrieve, sleep) -> None:
+    @patch("builtins.print")
+    def test_retries_model_failures(self, print_mock, retrieve, sleep) -> None:
         self.llm.generate.side_effect = [
             RuntimeError("unavailable"),
             "Answer",
         ]
 
-        with patch("builtins.print"):
-            self.assertEqual(ask("Question", **self.options), "Answer")
+        self.assertEqual(ask("Question", **self.options), "Answer")
 
         self.assertEqual(self.llm.generate.call_count, 2)
         sleep.assert_called_once_with(1)
 
     @patch("src.rag.rag_service.time.sleep")
     @patch("src.rag.rag_service.retrieve_chunks", return_value=[])
-    def test_raises_after_last_attempt(self, retrieve, sleep) -> None:
+    @patch("builtins.print")
+    def test_raises_after_last_attempt(self, print_mock, retrieve, sleep) -> None:
         self.llm.generate.side_effect = RuntimeError("unavailable")
 
-        with patch("builtins.print"), self.assertRaisesRegex(RuntimeError, "unavailable"):
+        with self.assertRaisesRegex(RuntimeError, "unavailable"):
             ask("Question", retries=2, **self.options)
 
         self.assertEqual(self.llm.generate.call_count, 2)
