@@ -2,7 +2,6 @@ import os
 import sys
 import time
 import socket
-import hashlib
 import subprocess
 import pandas as pd
 
@@ -15,6 +14,11 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from anthropic import Anthropic
 from pydantic import BaseModel
+
+if __package__:
+    from .id_utils import make_id
+else:
+    from id_utils import make_id
 
 ###############
 ## Utilities ##
@@ -108,18 +112,6 @@ def recipe_to_text(row: pd.Series) -> str:
     ingredients = safe_str(row["Ingredients"])
     instructions = safe_str(row["Instructions"])
     return f"Title: {title}\nIngredients: {ingredients}\nInstructions: {instructions}".strip()
-
-def make_id(text: str) -> int:
-    """
-    Generate a numeric ID from MD5 hash.
-    Args:
-        text (str): Input text.
-    Returns:
-        int: 64-bit integer ID.
-    """
-    hash_hex = hashlib.md5(text.encode()).hexdigest()
-    # Convert first 16 hex characters to a 64-bit integer
-    return int(hash_hex[:16], 16)
 
 ############
 ## Config ##
