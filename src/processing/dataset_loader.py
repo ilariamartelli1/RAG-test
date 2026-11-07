@@ -60,3 +60,23 @@ def dataframe_to_records(dataframe: pd.DataFrame, source: str) -> list[SourceRec
             row_ids, dataframe.itertuples(index=True, name=None), strict=True
         )
     ]
+
+
+def load_dataset_records(
+    dataset_name: str,
+    split: str,
+    drop_columns: list[str] | None = None,
+) -> list[SourceRecord]:
+    """
+    Load a dataset split and convert its rows to source records.
+
+    Args:
+        dataset_name (str): Name or path passed to the dataset loader.
+        split (str): Dataset split to load.
+        drop_columns (list[str] | None): Columns to remove, if any.
+
+    Returns:
+        list[SourceRecord]: Dataset rows with source and row ID metadata.
+    """
+    dataframe = load_dataset_dataframe(dataset_name, split, drop_columns)
+    return dataframe_to_records(dataframe, dataset_name)

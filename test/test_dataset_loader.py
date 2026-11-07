@@ -4,7 +4,11 @@ from unittest.mock import patch
 import pandas as pd
 from pandas.testing import assert_frame_equal
 
-from src.processing.dataset_loader import dataframe_to_records, load_dataset_dataframe
+from src.processing.dataset_loader import (
+    dataframe_to_records,
+    load_dataset_dataframe,
+    load_dataset_records,
+)
 
 
 class DatasetLoaderTests(unittest.TestCase):
@@ -77,6 +81,43 @@ class DatasetLoaderTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "row identifiers"):
             dataframe_to_records(dataframe, "dataset")
+
+    @patch("src.processing.dataset_loader.load_dataset")
+    def test_loads_dataset_as_records(self, load_dataset_mock) -> None:
+        load_dataset_mock.return_value.to_pandas.return_value = pd.DataFrame(
+            {"title": ["Example"], "unused": [1]}, index=[10]
+        )
+
+        records = load_dataset_records("example/dataset", "validation", ["unused"])
+
+        load_dataset_mock.assert_called_once_with("example/dataset", split="validation")
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].content, {"title": "Example"})
+        self.assertEqual(records[0].metadata, {"source": "example/dataset", "row_id": "10"})
+
+    @patch("src.processing.dataset_loader.load_dataset")
+    def test_loading_records_keeps_columns_by_default(self, load_dataset_mock) -> None:
+        load_dataset_mock.return_value.to_pandas.return_value = pd.DataFrame(
+            {"first": [1], "second": [2]}
+        )
+
+        records = load_dataset_records("dataset", "train")
+
+        self.assertEqual(records[0].content, {"first": 1, "second": 2})
+
+    @patch("src.processing.dataset_loader.load_dataset")
+    def test_loading_records_propagates_conversion_errors(self, load_dataset_mock) -> None:
+        load_dataset_mock.return_value.to_pandas.return_value = pd.DataFrame(
+            [[1, 2]], columns=["field", "field"]
+        )
+
+        with self.assertRaisesRegex(ValueError, "column names"):
+            load_dataset_records("dataset", "train")
+
+    @patch("src.processing.dataset_loader.load_dataset", side_effect=RuntimeError("unavailable"))
+    def test_loading_records_propagates_load_errors(self, load_dataset_mock) -> None:
+        with self.assertRaisesRegex(RuntimeError, "unavailable"):
+            load_dataset_records("dataset", "train")
 
 
 if __name__ == "__main__":
