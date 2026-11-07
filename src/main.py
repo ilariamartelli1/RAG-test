@@ -16,14 +16,14 @@ if __package__:
     from .dataset_utils import row_to_text
     from .id_utils import make_id
     from .network_utils import is_online
-    from .prompt_utils import message_with_context
+    from .prompt_utils import build_rag_prompt
     from .qdrant_service import ensure_qdrant
     from .text_utils import safe_str
 else:
     from dataset_utils import row_to_text
     from id_utils import make_id
     from network_utils import is_online
-    from prompt_utils import message_with_context
+    from prompt_utils import build_rag_prompt
     from qdrant_service import ensure_qdrant
     from text_utils import safe_str
 
@@ -278,27 +278,6 @@ If the retrieved recipes don't contain enough information to answer, say so hone
 When suggesting a recipe, mention its name and briefly describe why it fits the user's request.
 Keep your answers concise and practical."""
 
-def build_rag_prompt(question: str, recipes: list[dict]) -> list[dict]:
-    """
-    Build the messages list for the RAG call.
-    Args:
-        question (str): User question.
-        recipes (list): List of recipe dicts.
-    Returns:
-        list: List of message dicts for the LLM.
-    """
-    # Format retrieved recipes as context
-    context = "\n\n---\n\n".join([
-        f"**{r['title']}** (relevance: {r['score']})\n"
-        f"Ingredients: {r['ingredients']}\n"
-        f"Instructions: {r['instructions']}"
-        for r in recipes
-    ])
-    
-    user_message = message_with_context(question, context)
-    
-    return [{"role": "user", "content": user_message}]
-
 ##################
 ## Ask Function ##
 ##################
@@ -320,7 +299,13 @@ def ask(question: str, retries: int = 3) -> str:
     print()
     
     # 2. Build the prompt
-    messages = build_rag_prompt(question, recipes)
+    chunks = [
+        f"**{r['title']}** (relevance: {r['score']})\n"
+        f"Ingredients: {r['ingredients']}\n"
+        f"Instructions: {r['instructions']}"
+        for r in recipes
+    ]
+    messages = build_rag_prompt(question, chunks)
     
     # 3. Generate the response
     for attempt in range(retries):

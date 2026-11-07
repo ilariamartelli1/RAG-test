@@ -15,3 +15,9 @@ def message_with_context(question: str, context: str) -> str:
 
 User question: {question}"""
     return user_message
+
+
+def build_rag_prompt(question: str, chunks: list[str]) -> list[dict]:
+    """Build the messages list from retrieved text chunks."""
+    context = "\n\n---\n\n".join(chunks)
+    return [{"role": "user", "content": message_with_context(question, context)}]
