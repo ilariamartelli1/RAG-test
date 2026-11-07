@@ -17,9 +17,11 @@ from pydantic import BaseModel
 
 if __package__:
     from .id_utils import make_id
+    from .qdrant_utils import is_qdrant_running
     from .text_utils import safe_str
 else:
     from id_utils import make_id
+    from qdrant_utils import is_qdrant_running
     from text_utils import safe_str
 
 ###############
@@ -54,21 +56,6 @@ def is_online() -> None:
     except OSError as e:
         print(f"Offline or DNS/network issue detected:\n{e}")
         sys.exit(1)
-
-def is_qdrant_running() -> bool:
-    """
-    Check if Qdrant is running locally on port 6333.
-    Returns:
-        bool: True if Qdrant is running, False otherwise.
-    """
-    try:
-        socket.create_connection(
-            ("localhost", 6333),
-            timeout=2,
-        )
-        return True
-    except OSError:
-        return False
 
 def ensure_qdrant() -> None:
     """
