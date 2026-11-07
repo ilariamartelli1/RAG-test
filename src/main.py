@@ -15,11 +15,13 @@ from pydantic import BaseModel
 if __package__:
     from .id_utils import make_id
     from .network_utils import is_online
+    from .prompt_utils import message_with_context
     from .qdrant_service import ensure_qdrant
     from .text_utils import safe_str
 else:
     from id_utils import make_id
     from network_utils import is_online
+    from prompt_utils import message_with_context
     from qdrant_service import ensure_qdrant
     from text_utils import safe_str
 
@@ -286,25 +288,6 @@ If the retrieved recipes don't contain enough information to answer, say so hone
 
 When suggesting a recipe, mention its name and briefly describe why it fits the user's request.
 Keep your answers concise and practical."""
-
-def message_with_context(question: str, context: str) -> str:
-    """
-    Build the user message with context for the LLM prompt.
-    Args:
-        question (str): User question.
-        context (str): Retrieved recipes context.
-    Returns:
-        str: Formatted user message.
-    """
-    user_message = f"""Here are the most relevant recipes from the database:
-
-{context}
-
----
-
-User question: {question}"""
-    return user_message
-
 
 def build_rag_prompt(question: str, recipes: list[dict]) -> list[dict]:
     """
