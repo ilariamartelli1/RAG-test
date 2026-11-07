@@ -1,5 +1,4 @@
 import os
-import time
 import pandas as pd
 
 from torch import cuda
@@ -11,21 +10,21 @@ from qdrant_client.models import Distance, VectorParams
 from anthropic import Anthropic
 
 if __package__:
-    from .chunk_service import retrieve_chunks, store_chunks
+    from .chunk_service import store_chunks
     from .dataset_utils import chunk_dataset_row, row_to_text
     from .id_utils import make_id
     from .chunk_models import ChunkPayload
     from .network_utils import is_online
-    from .prompt_utils import build_rag_prompt
     from .qdrant_service import ensure_qdrant
+    from .rag_service import ask
 else:
-    from chunk_service import retrieve_chunks, store_chunks
+    from chunk_service import store_chunks
     from dataset_utils import chunk_dataset_row, row_to_text
     from id_utils import make_id
     from chunk_models import ChunkPayload
     from network_utils import is_online
-    from prompt_utils import build_rag_prompt
     from qdrant_service import ensure_qdrant
+    from rag_service import ask
 
 ###############
 ## Utilities ##
@@ -179,47 +178,13 @@ If the context doesn't contain enough information to answer, say so honestly.
 
 Keep your answers concise and practical."""
 
-##################
-## Ask Function ##
-##################
-
-def ask(question: str, retries: int = 3) -> str:
-    """
-    Full RAG pipeline: retrieve context, then ask the LLM.
-    Args:
-        question (str): User question.
-        retries (int): Number of retries for LLM call.
-    Returns:
-        str: LLM answer.
-    """
-    # 1. Retrieve
-    results = retrieve_chunks(qdrant, embedder, COLLECTION, question, embedding_batch_size)
-    print(f"\nRetrieved {len(results)} chunks:")
-    for chunk, score in results:
-        print(f"  {score:.4f}  {chunk.metadata}")
-    print()
-    
-    # 2. Build the prompt
-    messages = build_rag_prompt(question, [chunk.text for chunk, _ in results])
-    
-    # 3. Generate the response
-    for attempt in range(retries):
-        try:
-            response = claude.messages.create(
-                model=LLM_MODEL,
-                max_tokens=1024,
-                system=RAG_SYSTEM_PROMPT,
-                messages=messages
-            )
-            break
-        except Exception as e:
-            print(f"Attempt {attempt+1} failed: {e}")
-            if attempt == retries - 1:
-                raise
-            time.sleep(1)  # wait before retrying
-
-    answer = response.content[0].text.strip()
-    print(f"Answer:\n{answer}")
-    return answer
-
-ask("I want to cook something with chicken and tomatoes. What do you suggest?")
+ask(
+    "I want to cook something with chicken and tomatoes. What do you suggest?",
+    qdrant=qdrant,
+    embedder=embedder,
+    collection=COLLECTION,
+    embedding_batch_size=embedding_batch_size,
+    llm=claude,
+    llm_model=LLM_MODEL,
+    system_prompt=RAG_SYSTEM_PROMPT,
+)
