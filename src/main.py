@@ -1,9 +1,7 @@
 import os
 import pandas as pd
 
-from torch import cuda
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from anthropic import Anthropic
 
@@ -13,6 +11,7 @@ if __package__:
     from .storage.collection_service import ensure_collection
     from .processing.dataset_loader import load_dataset_dataframe
     from .processing.dataset_utils import chunk_dataset_row, row_to_text
+    from .processing.embedding_loader import load_sentence_transformer
     from .id_utils import group_positions_by_id
     from .chunk_models import ChunkPayload
     from .network_utils import is_online
@@ -24,6 +23,7 @@ else:
     from storage.collection_service import ensure_collection
     from processing.dataset_loader import load_dataset_dataframe
     from processing.dataset_utils import chunk_dataset_row, row_to_text
+    from processing.embedding_loader import load_sentence_transformer
     from id_utils import group_positions_by_id
     from chunk_models import ChunkPayload
     from network_utils import is_online
@@ -62,21 +62,11 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 ## Clients ##
 #############
 
-is_cuda_available = cuda.is_available()
-
-embedder = SentenceTransformer(EMBED_MODEL,
-    device="cuda" if is_cuda_available else "cpu")
-
-if is_cuda_available:
-    print(f"\nCUDA is available. Using GPU {cuda.get_device_name(0)} for embeddings.")
-else:
-    print("\nCUDA is not available. Using CPU for embeddings.")
+embedder, embedding_batch_size = load_sentence_transformer(EMBED_MODEL)
 
 embedding_dimension = embedder.get_embedding_dimension()
 print(f"Sentence embedding dimension: {embedding_dimension}")
 
-# how many texts the embedding model processes simultaneously internally
-embedding_batch_size = 128 if is_cuda_available else 32
 print(f"Using embedding batch size: {embedding_batch_size}")
 
 qdrant = QdrantClient(
