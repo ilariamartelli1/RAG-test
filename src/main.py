@@ -5,12 +5,12 @@ from torch import cuda
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
 from anthropic import Anthropic
 
 if __package__:
     from .providers.anthropic_provider import AnthropicProvider
     from .storage.chunk_service import store_chunks
+    from .storage.collection_service import ensure_collection
     from .processing.dataset_loader import load_dataset_dataframe
     from .processing.dataset_utils import chunk_dataset_row, row_to_text
     from .id_utils import group_positions_by_id
@@ -21,6 +21,7 @@ if __package__:
 else:
     from providers.anthropic_provider import AnthropicProvider
     from storage.chunk_service import store_chunks
+    from storage.collection_service import ensure_collection
     from processing.dataset_loader import load_dataset_dataframe
     from processing.dataset_utils import chunk_dataset_row, row_to_text
     from id_utils import group_positions_by_id
@@ -91,15 +92,7 @@ claude = Anthropic(
 ## Collection creation ##
 #########################
 
-collection_exists = qdrant.collection_exists(COLLECTION)
-if not collection_exists:
-    qdrant.create_collection(
-        collection_name=COLLECTION,
-        vectors_config=VectorParams(
-            size=embedding_dimension,
-            distance=Distance.COSINE,
-        ),
-    )
+if ensure_collection(qdrant, COLLECTION, embedding_dimension):
     print(f"\nCollection '{COLLECTION}' created")
 
 ###############
