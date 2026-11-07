@@ -1,31 +1,27 @@
 import os
-import pandas as pd
-
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from anthropic import Anthropic
 
 if __package__:
     from .providers.anthropic_provider import AnthropicProvider
-    from .storage.chunk_service import store_chunks
     from .storage.collection_service import ensure_collection
+    from .processing.dataset_ingestion import ingest_dataset
     from .processing.dataset_loader import load_dataset_dataframe
-    from .processing.dataset_utils import chunk_dataset_row, row_to_text
+    from .processing.dataset_utils import row_to_text
     from .processing.embedding_loader import load_sentence_transformer
     from .id_utils import group_positions_by_id
-    from .chunk_models import ChunkPayload
     from .network_utils import is_online
     from .storage.qdrant_service import ensure_qdrant
     from .rag.rag_service import ask
 else:
     from providers.anthropic_provider import AnthropicProvider
-    from storage.chunk_service import store_chunks
     from storage.collection_service import ensure_collection
+    from processing.dataset_ingestion import ingest_dataset
     from processing.dataset_loader import load_dataset_dataframe
-    from processing.dataset_utils import chunk_dataset_row, row_to_text
+    from processing.dataset_utils import row_to_text
     from processing.embedding_loader import load_sentence_transformer
     from id_utils import group_positions_by_id
-    from chunk_models import ChunkPayload
     from network_utils import is_online
     from storage.qdrant_service import ensure_qdrant
     from rag.rag_service import ask
@@ -107,23 +103,7 @@ print(f"{len(df)} recipes loaded. Will use embedding model: {EMBED_MODEL}")
 ## Ingestion loop ##
 ####################
 
-for i in range(0, len(df), BATCH_SIZE):
-    batch_df: pd.DataFrame = df.iloc[i:i+BATCH_SIZE]
-    chunks = [
-        ChunkPayload(
-            text=chunk.text,
-            metadata={
-                "source": DATASET_NAME,
-                "row_id": chunk.row_id,
-                "chunk_index": chunk.chunk_index,
-                "field_name": chunk.field_name,
-            },
-        )
-        for row_id, row in batch_df.iterrows()
-        for chunk in chunk_dataset_row(row.drop(labels=["full_text"]), str(row_id))
-    ]
-    added = store_chunks(qdrant, embedder, COLLECTION, chunks, embedding_batch_size)
-    print(f"Progress: {min(i+BATCH_SIZE, len(df))}/{len(df)} (+{added} new chunks)")
+ingest_dataset(df, DATASET_NAME, qdrant, embedder, COLLECTION, BATCH_SIZE, embedding_batch_size)
 
 print(f"Done! Total chunks in collection '{COLLECTION}': {qdrant.count(COLLECTION).count}")
 
