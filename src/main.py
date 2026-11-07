@@ -1,7 +1,5 @@
 import os
-import sys
 import time
-import subprocess
 import pandas as pd
 
 from typing import List
@@ -17,12 +15,12 @@ from pydantic import BaseModel
 if __package__:
     from .id_utils import make_id
     from .network_utils import is_online
-    from .qdrant_utils import is_qdrant_running
+    from .qdrant_service import ensure_qdrant
     from .text_utils import safe_str
 else:
     from id_utils import make_id
     from network_utils import is_online
-    from qdrant_utils import is_qdrant_running
+    from qdrant_service import ensure_qdrant
     from text_utils import safe_str
 
 ###############
@@ -47,26 +45,6 @@ class Recipe(BaseModel):
     ingredients: str
     instructions: str
 
-def ensure_qdrant() -> None:
-    """
-    Ensure Qdrant is running, start it with Docker Compose if not.
-    """
-    if is_qdrant_running():
-        print("Qdrant already running")
-        return
-    print("Starting Qdrant...")
-
-    try:
-        subprocess.run(
-            ["docker", "compose", "up", "-d"],
-            cwd=PROJECT_ROOT,
-            check=True,
-        )
-        print("Qdrant started")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to start docker compose:\n{e}")
-        sys.exit(1)
-
 def recipe_to_text(row: pd.Series) -> str:
     """
     Convert a recipe row to a formatted text string.
@@ -88,7 +66,7 @@ is_online()
 
 load_dotenv()
 
-ensure_qdrant()
+ensure_qdrant(PROJECT_ROOT)
 
 # Enable expandable GPU memory segments to reduce fragmentation
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
