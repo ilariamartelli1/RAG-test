@@ -1,7 +1,6 @@
 import os
 import sys
 import time
-import socket
 import subprocess
 import pandas as pd
 
@@ -17,10 +16,12 @@ from pydantic import BaseModel
 
 if __package__:
     from .id_utils import make_id
+    from .network_utils import is_online
     from .qdrant_utils import is_qdrant_running
     from .text_utils import safe_str
 else:
     from id_utils import make_id
+    from network_utils import is_online
     from qdrant_utils import is_qdrant_running
     from text_utils import safe_str
 
@@ -45,17 +46,6 @@ class Recipe(BaseModel):
     title: str
     ingredients: str
     instructions: str
-
-def is_online() -> None:
-    """
-    Check if the machine is online by connecting to a public DNS server.
-    Exits the program if offline.
-    """
-    try:
-        socket.create_connection(("8.8.8.8", 53), timeout=5)
-    except OSError as e:
-        print(f"Offline or DNS/network issue detected:\n{e}")
-        sys.exit(1)
 
 def ensure_qdrant() -> None:
     """
