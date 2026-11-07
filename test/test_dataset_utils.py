@@ -42,6 +42,23 @@ class DatasetUtilsTests(unittest.TestCase):
     def test_empty_row_returns_empty_text(self) -> None:
         self.assertEqual(row_to_text(pd.Series(dtype=object)), "")
 
+    def test_formats_record_fields_like_a_series(self) -> None:
+        fields: dict[str, object] = {
+            "author": "Ada",
+            "year": 2024,
+            "missing": None,
+            "tags": ["science", "history"],
+        }
+
+        self.assertEqual(
+            row_to_text(fields),
+            "author: Ada\nyear: 2024\nmissing: \ntags: ['science', 'history']",
+        )
+        self.assertEqual(row_to_text(fields), row_to_text(pd.Series(fields, dtype=object)))
+
+    def test_empty_record_fields_return_empty_text(self) -> None:
+        self.assertEqual(row_to_text({}), "")
+
     def test_chunk_keeps_a_row_together_when_it_fits(self) -> None:
         row = pd.Series({"name": "Soup", "ingredients": "Tomato"})
         expected = "Record: row-1\nname: Soup\ningredients: Tomato"

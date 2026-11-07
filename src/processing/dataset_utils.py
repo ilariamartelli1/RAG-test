@@ -23,11 +23,11 @@ def _value_to_text(value: object) -> str:
     return safe_str(value) if pd.api.types.is_scalar(value) else str(value)
 
 
-def row_to_text(row: pd.Series) -> str:
+def row_to_text(row: pd.Series | dict[str, object]) -> str:
     """
     Convert a dataset row to a formatted text string.
     Args:
-        row (pd.Series): Dataset row.
+        row (pd.Series | dict[str, object]): Dataset row or record fields.
     Returns:
         str: Formatted row text.
     """
