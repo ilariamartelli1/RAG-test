@@ -12,7 +12,7 @@ from anthropic import Anthropic
 if __package__:
     from .providers.anthropic_provider import AnthropicProvider
     from .storage.chunk_service import store_chunks
-    from .dataset_utils import chunk_dataset_row, row_to_text
+    from .processing.dataset_utils import chunk_dataset_row, row_to_text
     from .id_utils import group_positions_by_id
     from .chunk_models import ChunkPayload
     from .network_utils import is_online
@@ -21,7 +21,7 @@ if __package__:
 else:
     from providers.anthropic_provider import AnthropicProvider
     from storage.chunk_service import store_chunks
-    from dataset_utils import chunk_dataset_row, row_to_text
+    from processing.dataset_utils import chunk_dataset_row, row_to_text
     from id_utils import group_positions_by_id
     from chunk_models import ChunkPayload
     from network_utils import is_online

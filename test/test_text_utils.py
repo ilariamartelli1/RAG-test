@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from src.text_utils import safe_str
+from src.processing.text_utils import safe_str
 
 
 class SafeStrTests(unittest.TestCase):
