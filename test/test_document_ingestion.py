@@ -24,7 +24,7 @@ class DocumentIngestionTests(unittest.TestCase):
                     {"source": filename, "chunk_index": index} for index in range(4)
                 ])
 
-    @patch("src.processing.document_loader.load_pdf_records")
+    @patch("src.loaders.document_loader.load_pdf_records")
     def test_ingests_pdf_pages_with_page_metadata(self, load_pdf) -> None:
         load_pdf.return_value = [
             SourceRecord(content="first", metadata={"source": "guide.pdf", "page": 1}),

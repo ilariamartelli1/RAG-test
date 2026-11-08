@@ -9,7 +9,7 @@ from unittest.mock import DEFAULT, MagicMock, patch
 import pandas as pd
 
 from src.chunk_models import ChunkPayload
-from src.processing.dataset_loader import dataframe_to_records
+from src.loaders.dataset_loader import dataframe_to_records
 from src.processing.dataset_utils import chunk_dataset_row, row_to_text
 from src.processing.record_models import SourceRecord
 
@@ -26,7 +26,7 @@ class MainTests(unittest.TestCase):
     @patch("dotenv.load_dotenv")
     @patch("src.storage.qdrant_service.ensure_qdrant")
     @patch("src.processing.embedding_loader.load_sentence_transformer")
-    @patch("src.processing.dataset_loader.load_dataset_records")
+    @patch("src.loaders.dataset_loader.load_dataset_records")
     @patch("src.processing.ingestion_service.ingest_records")
     @patch("src.storage.chunk_service.store_chunks")
     @patch("src.rag.rag_service.ask")
@@ -52,7 +52,7 @@ class MainTests(unittest.TestCase):
     @patch("anthropic.Anthropic")
     @patch("src.providers.anthropic_provider.AnthropicProvider")
     @patch("src.storage.collection_service.ensure_collection")
-    @patch("src.processing.dataset_loader.load_dataset_records")
+    @patch("src.loaders.dataset_loader.load_dataset_records")
     @patch("src.processing.ingestion_service.ingest_records")
     @patch("src.rag.rag_service.ask")
     @patch("builtins.print")

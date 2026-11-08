@@ -1,12 +1,12 @@
 import unittest
 from unittest.mock import patch
 
-from src.processing.document_loader import load_document_records
+from src.loaders.document_loader import load_document_records
 from src.processing.record_models import SourceRecord
 
 
 class DocumentLoaderTests(unittest.TestCase):
-    @patch("src.processing.document_loader.load_text_records")
+    @patch("src.loaders.document_loader.load_text_records")
     def test_selects_text_loader_for_txt_and_markdown(self, load_text) -> None:
         expected = [SourceRecord(content="example", metadata={"source": "file"})]
         load_text.return_value = expected
@@ -18,7 +18,7 @@ class DocumentLoaderTests(unittest.TestCase):
                 load_text.assert_called_once_with(b"example", filename)
                 load_text.reset_mock()
 
-    @patch("src.processing.document_loader.load_pdf_records")
+    @patch("src.loaders.document_loader.load_pdf_records")
     def test_selects_pdf_loader_case_insensitively(self, load_pdf) -> None:
         expected = [SourceRecord(content="page", metadata={"source": "guide.PDF", "page": 1})]
         load_pdf.return_value = expected
@@ -47,7 +47,7 @@ class DocumentLoaderTests(unittest.TestCase):
         with self.assertRaises(UnicodeDecodeError):
             load_document_records(b"\xff", "notes.txt")
 
-    @patch("src.processing.document_loader.load_pdf_records", side_effect=ValueError("invalid PDF"))
+    @patch("src.loaders.document_loader.load_pdf_records", side_effect=ValueError("invalid PDF"))
     def test_propagates_pdf_loader_errors(self, load_pdf) -> None:
         with self.assertRaisesRegex(ValueError, "invalid PDF"):
             load_document_records(b"invalid", "guide.pdf")

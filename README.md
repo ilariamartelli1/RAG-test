@@ -12,13 +12,13 @@ requires a running server and a locally installed model; OpenAI requires an API
 key. The current example in `main.py` still uses Anthropic.
 
 A UTF-8 text loader and text chunker are available in
-`src/processing/text_loader.py` and `src/processing/text_chunker.py`. They also
+`src/loaders/text_loader.py` and `src/processing/text_chunker.py`. They also
 accept UTF-8 Markdown as text, preserving its markup without interpreting its
 structure.
-`src/processing/pdf_loader.py` extracts text per PDF page, but does not support
+`src/loaders/pdf_loader.py` extracts text per PDF page, but does not support
 encrypted PDFs or OCR for scanned pages. Image-only pages have no extracted
 text, and documents with no extractable text are rejected. These loaders are
-selected by filename extension through `src/processing/document_loader.py`.
+selected by filename extension through `src/loaders/document_loader.py`.
 `src/processing/document_ingestion.py` connects document loading and chunking
 to a storage callback. It is not yet connected to the example pipeline or a
 web interface.

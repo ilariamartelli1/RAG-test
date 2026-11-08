@@ -8,7 +8,7 @@ from anthropic import Anthropic
 if __package__:
     from .providers.anthropic_provider import AnthropicProvider
     from .storage.collection_service import ensure_collection
-    from .processing.dataset_loader import load_dataset_records
+    from .loaders.dataset_loader import load_dataset_records
     from .processing.dataset_utils import chunk_dataset_record, row_to_text
     from .processing.embedding_loader import load_sentence_transformer
     from .processing.ingestion_service import ingest_records
@@ -20,7 +20,7 @@ if __package__:
 else:
     from providers.anthropic_provider import AnthropicProvider
     from storage.collection_service import ensure_collection
-    from processing.dataset_loader import load_dataset_records
+    from loaders.dataset_loader import load_dataset_records
     from processing.dataset_utils import chunk_dataset_record, row_to_text
     from processing.embedding_loader import load_sentence_transformer
     from processing.ingestion_service import ingest_records

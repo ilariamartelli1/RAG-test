@@ -1,8 +1,12 @@
 from pathlib import Path
 
 from .pdf_loader import load_pdf_records
-from .record_models import SourceRecord
 from .text_loader import load_text_records
+
+if "." in __package__:
+    from ..processing.record_models import SourceRecord
+else:
+    from processing.record_models import SourceRecord
 
 
 def load_document_records(data: bytes, filename: str) -> list[SourceRecord]:

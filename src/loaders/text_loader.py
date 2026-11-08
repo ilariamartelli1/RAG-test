@@ -1,4 +1,7 @@
-from .record_models import SourceRecord
+if "." in __package__:
+    from ..processing.record_models import SourceRecord
+else:
+    from processing.record_models import SourceRecord
 
 
 def load_text_records(data: bytes, source: str) -> list[SourceRecord]:

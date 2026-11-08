@@ -8,7 +8,7 @@ from pypdf.errors import PdfReadError
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from src.processing.ingestion_service import ingest_records
-from src.processing.pdf_loader import load_pdf_records
+from src.loaders.pdf_loader import load_pdf_records
 from src.processing.text_chunker import chunk_text_record
 
 

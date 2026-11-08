@@ -1,6 +1,6 @@
 import unittest
 
-from src.processing.text_loader import load_text_records
+from src.loaders.text_loader import load_text_records
 
 
 class TextLoaderTests(unittest.TestCase):

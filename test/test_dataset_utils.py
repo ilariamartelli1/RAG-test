@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from src.processing.dataset_loader import dataframe_to_records
+from src.loaders.dataset_loader import dataframe_to_records
 from src.processing.dataset_utils import chunk_dataset_record, chunk_dataset_row, row_to_text
 from src.processing.record_models import SourceRecord
 

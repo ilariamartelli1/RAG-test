@@ -2,7 +2,10 @@ from io import BytesIO
 
 from pypdf import PdfReader
 
-from .record_models import SourceRecord
+if "." in __package__:
+    from ..processing.record_models import SourceRecord
+else:
+    from processing.record_models import SourceRecord
 
 
 def load_pdf_records(data: bytes, source: str) -> list[SourceRecord]:
