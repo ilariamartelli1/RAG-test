@@ -8,8 +8,9 @@ from anthropic import Anthropic
 if __package__:
     from .providers.anthropic_provider import AnthropicProvider
     from .storage.collection_service import ensure_collection
+    from .chunkers.dataset_chunker import chunk_dataset_record
     from .loaders.dataset_loader import load_dataset_records
-    from .processing.dataset_utils import chunk_dataset_record, row_to_text
+    from .processing.dataset_utils import row_to_text
     from .processing.embedding_loader import load_sentence_transformer
     from .processing.ingestion_service import ingest_records
     from .id_utils import group_positions_by_id
@@ -20,8 +21,9 @@ if __package__:
 else:
     from providers.anthropic_provider import AnthropicProvider
     from storage.collection_service import ensure_collection
+    from chunkers.dataset_chunker import chunk_dataset_record
     from loaders.dataset_loader import load_dataset_records
-    from processing.dataset_utils import chunk_dataset_record, row_to_text
+    from processing.dataset_utils import row_to_text
     from processing.embedding_loader import load_sentence_transformer
     from processing.ingestion_service import ingest_records
     from id_utils import group_positions_by_id

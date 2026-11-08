@@ -4,13 +4,13 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from .dataset_utils import chunk_dataset_row
-
 if "." in __package__:
     from ..chunk_models import ChunkPayload
+    from ..chunkers.dataset_chunker import chunk_dataset_row
     from ..storage.chunk_service import store_chunks
 else:
     from chunk_models import ChunkPayload
+    from chunkers.dataset_chunker import chunk_dataset_row
     from storage.chunk_service import store_chunks
 
 if TYPE_CHECKING:

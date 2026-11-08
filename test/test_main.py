@@ -10,7 +10,8 @@ import pandas as pd
 
 from src.chunk_models import ChunkPayload
 from src.loaders.dataset_loader import dataframe_to_records
-from src.processing.dataset_utils import chunk_dataset_row, row_to_text
+from src.chunkers.dataset_chunker import chunk_dataset_row
+from src.processing.dataset_utils import row_to_text
 from src.processing.record_models import SourceRecord
 
 

@@ -9,7 +9,7 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from src.processing.ingestion_service import ingest_records
 from src.loaders.pdf_loader import load_pdf_records
-from src.processing.text_chunker import chunk_text_record
+from src.chunkers.text_chunker import chunk_text_record
 
 
 def make_pdf(pages: list[str], password: str | None = None) -> bytes:

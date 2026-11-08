@@ -2,13 +2,14 @@ from collections.abc import Callable
 from functools import partial
 
 from .ingestion_service import ingest_records
-from .text_chunker import chunk_text_record
 
 if "." in __package__:
     from ..chunk_models import ChunkPayload
+    from ..chunkers.text_chunker import chunk_text_record
     from ..loaders.document_loader import load_document_records
 else:
     from chunk_models import ChunkPayload
+    from chunkers.text_chunker import chunk_text_record
     from loaders.document_loader import load_document_records
 
 

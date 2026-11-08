@@ -1,9 +1,9 @@
-from .record_models import SourceRecord
-
 if "." in __package__:
     from ..chunk_models import ChunkPayload
+    from ..processing.record_models import SourceRecord
 else:
     from chunk_models import ChunkPayload
+    from processing.record_models import SourceRecord
 
 
 def chunk_text_record(
