@@ -19,4 +19,6 @@ structure.
 encrypted PDFs or OCR for scanned pages. Image-only pages have no extracted
 text, and documents with no extractable text are rejected. These loaders are
 selected by filename extension through `src/processing/document_loader.py`.
-They are not yet connected to the example pipeline or a web interface.
+`src/processing/document_ingestion.py` connects document loading and chunking
+to a storage callback. It is not yet connected to the example pipeline or a
+web interface.
