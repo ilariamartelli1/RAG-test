@@ -13,8 +13,8 @@ if __package__:
     from .utils.dataset_utils import row_to_text
     from .embeddings.embedding_loader import load_sentence_transformer
     from .ingestion.ingestion_service import ingest_records
-    from .id_utils import group_positions_by_id
-    from .network_utils import is_online
+    from .utils.id_utils import group_positions_by_id
+    from .utils.network_utils import is_online
     from .storage.qdrant_service import ensure_qdrant
     from .storage.chunk_service import store_chunks
     from .rag.rag_service import ask
@@ -26,8 +26,8 @@ else:
     from utils.dataset_utils import row_to_text
     from embeddings.embedding_loader import load_sentence_transformer
     from ingestion.ingestion_service import ingest_records
-    from id_utils import group_positions_by_id
-    from network_utils import is_online
+    from utils.id_utils import group_positions_by_id
+    from utils.network_utils import is_online
     from storage.qdrant_service import ensure_qdrant
     from storage.chunk_service import store_chunks
     from rag.rag_service import ask

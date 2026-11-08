@@ -23,7 +23,7 @@ class MainTests(unittest.TestCase):
         self.assertTrue((Path(main_module.PROJECT_ROOT) / "docker-compose.yml").is_file())
 
     @patch.dict(os.environ, {"PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:False"})
-    @patch("src.network_utils.is_online")
+    @patch("src.utils.network_utils.is_online")
     @patch("dotenv.load_dotenv")
     @patch("src.storage.qdrant_service.ensure_qdrant")
     @patch("src.embeddings.embedding_loader.load_sentence_transformer")
@@ -45,7 +45,7 @@ class MainTests(unittest.TestCase):
         self.assertEqual(os.environ["PYTORCH_CUDA_ALLOC_CONF"], "expandable_segments:False")
 
     @patch.dict(os.environ, {}, clear=False)
-    @patch("src.network_utils.is_online")
+    @patch("src.utils.network_utils.is_online")
     @patch("dotenv.load_dotenv")
     @patch("src.storage.qdrant_service.ensure_qdrant")
     @patch("src.embeddings.embedding_loader.load_sentence_transformer")

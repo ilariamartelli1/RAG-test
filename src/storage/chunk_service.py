@@ -7,10 +7,10 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 
 if "." in __package__:
-    from ..id_utils import make_id
+    from ..utils.id_utils import make_id
     from ..models.chunk_models import ChunkPayload
 else:
-    from id_utils import make_id
+    from utils.id_utils import make_id
     from models.chunk_models import ChunkPayload
 
 if TYPE_CHECKING:

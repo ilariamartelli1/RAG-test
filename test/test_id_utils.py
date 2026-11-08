@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from src.id_utils import group_positions_by_id, make_id
+from src.utils.id_utils import group_positions_by_id, make_id
 
 
 class IdUtilsTests(unittest.TestCase):
@@ -38,7 +38,7 @@ class IdUtilsTests(unittest.TestCase):
             {make_id("first"): [0, 1]},
         )
 
-    @patch("src.id_utils.make_id", return_value=123)
+    @patch("src.utils.id_utils.make_id", return_value=123)
     def test_groups_hash_collisions(self, make_id_mock) -> None:
         self.assertEqual(group_positions_by_id(["first", "second"]), {123: [0, 1]})
 
