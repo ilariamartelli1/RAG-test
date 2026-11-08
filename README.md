@@ -11,5 +11,6 @@ Provider adapters are available for Anthropic, Ollama and OpenAI. Ollama
 requires a running server and a locally installed model; OpenAI requires an API
 key. The current example in `main.py` still uses Anthropic.
 
-A UTF-8 text loader is available in `src/processing/text_loader.py`; it is not
-yet connected to the example pipeline or a web interface.
+A UTF-8 text loader and text chunker are available in
+`src/processing/text_loader.py` and `src/processing/text_chunker.py`; they are
+not yet connected to the example pipeline or a web interface.
