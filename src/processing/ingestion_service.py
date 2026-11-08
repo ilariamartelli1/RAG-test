@@ -1,11 +1,11 @@
 from collections.abc import Callable, Iterable
 
-from .record_models import SourceRecord
-
 if "." in __package__:
-    from ..chunk_models import ChunkPayload
+    from ..models.chunk_models import ChunkPayload
+    from ..models.record_models import SourceRecord
 else:
-    from chunk_models import ChunkPayload
+    from models.chunk_models import ChunkPayload
+    from models.record_models import SourceRecord
 
 
 def ingest_records(

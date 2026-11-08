@@ -3,11 +3,11 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from src.chunk_models import ChunkPayload
+from src.models.chunk_models import ChunkPayload
 from src.loaders.dataset_loader import dataframe_to_records
 from src.chunkers.dataset_chunker import chunk_dataset_record
 from src.processing.ingestion_service import ingest_records
-from src.processing.record_models import SourceRecord
+from src.models.record_models import SourceRecord
 
 
 class IngestionServiceTests(unittest.TestCase):

@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 if "." in __package__:
-    from ..chunk_models import ChunkPayload
+    from ..models.chunk_models import ChunkPayload
     from ..chunkers.dataset_chunker import chunk_dataset_row
     from ..storage.chunk_service import store_chunks
 else:
-    from chunk_models import ChunkPayload
+    from models.chunk_models import ChunkPayload
     from chunkers.dataset_chunker import chunk_dataset_row
     from storage.chunk_service import store_chunks
 

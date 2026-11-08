@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from src.loaders.document_loader import load_document_records
-from src.processing.record_models import SourceRecord
+from src.models.record_models import SourceRecord
 
 
 class DocumentLoaderTests(unittest.TestCase):

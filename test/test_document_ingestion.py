@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from src.processing.document_ingestion import ingest_document
-from src.processing.record_models import SourceRecord
+from src.models.record_models import SourceRecord
 
 
 class DocumentIngestionTests(unittest.TestCase):

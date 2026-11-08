@@ -4,11 +4,11 @@ from functools import partial
 from .ingestion_service import ingest_records
 
 if "." in __package__:
-    from ..chunk_models import ChunkPayload
+    from ..models.chunk_models import ChunkPayload
     from ..chunkers.text_chunker import chunk_text_record
     from ..loaders.document_loader import load_document_records
 else:
-    from chunk_models import ChunkPayload
+    from models.chunk_models import ChunkPayload
     from chunkers.text_chunker import chunk_text_record
     from loaders.document_loader import load_document_records
 

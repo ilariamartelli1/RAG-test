@@ -2,7 +2,7 @@ import unittest
 
 from pydantic import ValidationError
 
-from src.chunk_models import ChunkPayload
+from src.models.chunk_models import ChunkPayload
 
 
 class ChunkModelsTests(unittest.TestCase):

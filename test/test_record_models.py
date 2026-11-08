@@ -3,7 +3,7 @@ from datetime import date
 
 from pydantic import ValidationError
 
-from src.processing.record_models import SourceRecord
+from src.models.record_models import SourceRecord
 
 
 class RecordModelsTests(unittest.TestCase):

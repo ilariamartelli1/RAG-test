@@ -7,7 +7,7 @@ from qdrant_client.models import Distance, VectorParams
 
 from src.storage.chunk_service import retrieve_chunks, store_chunks
 from src.chunkers.dataset_chunker import chunk_dataset_row
-from src.chunk_models import ChunkPayload
+from src.models.chunk_models import ChunkPayload
 from src.rag.prompt_utils import build_rag_prompt
 
 

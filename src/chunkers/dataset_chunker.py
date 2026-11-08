@@ -3,13 +3,13 @@ from dataclasses import dataclass
 import pandas as pd
 
 if "." in __package__:
-    from ..chunk_models import ChunkPayload
+    from ..models.chunk_models import ChunkPayload
     from ..processing.dataset_utils import row_to_text, value_to_text
-    from ..processing.record_models import SourceRecord
+    from ..models.record_models import SourceRecord
 else:
-    from chunk_models import ChunkPayload
+    from models.chunk_models import ChunkPayload
     from processing.dataset_utils import row_to_text, value_to_text
-    from processing.record_models import SourceRecord
+    from models.record_models import SourceRecord
 
 
 @dataclass(frozen=True)

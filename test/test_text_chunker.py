@@ -3,7 +3,7 @@ from functools import partial
 from unittest.mock import MagicMock
 
 from src.processing.ingestion_service import ingest_records
-from src.processing.record_models import SourceRecord
+from src.models.record_models import SourceRecord
 from src.chunkers.text_chunker import chunk_text_record
 from src.loaders.text_loader import load_text_records
 

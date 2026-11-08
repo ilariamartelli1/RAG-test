@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.chunk_models import ChunkPayload
+from src.models.chunk_models import ChunkPayload
 from src.rag.rag_service import ask
 
 
