@@ -1,3 +1,5 @@
+"""Convert scalar values to text while handling missing values."""
+
 from typing import Any
 
 import pandas as pd

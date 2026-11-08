@@ -1,3 +1,5 @@
+"""Orchestrate source record loading, chunking and batched storage."""
+
 from collections.abc import Callable, Iterable
 
 if "." in __package__:

@@ -1,3 +1,5 @@
+"""Tests for embedding model loading and batch size selection."""
+
 import unittest
 from unittest.mock import patch
 

@@ -1,3 +1,5 @@
+"""Tests for document ingestion orchestration."""
+
 import unittest
 from unittest.mock import MagicMock, patch
 

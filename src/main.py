@@ -1,3 +1,5 @@
+"""Run the example dataset ingestion and question-answering pipeline."""
+
 import os
 from functools import partial
 

@@ -1,3 +1,5 @@
+"""Adapt the Anthropic client to the language model provider interface."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

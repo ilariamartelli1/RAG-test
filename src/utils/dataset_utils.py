@@ -1,3 +1,5 @@
+"""Format dataset fields and rows as text."""
+
 import pandas as pd
 
 from .text_utils import safe_str

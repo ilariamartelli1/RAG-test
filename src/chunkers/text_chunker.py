@@ -1,3 +1,5 @@
+"""Split text records into bounded chunks while preserving their content."""
+
 if "." in __package__:
     from ..models.chunk_models import ChunkPayload
     from ..models.record_models import SourceRecord

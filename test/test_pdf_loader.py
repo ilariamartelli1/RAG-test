@@ -1,3 +1,5 @@
+"""Tests for PDF text extraction and ingestion."""
+
 import unittest
 from functools import partial
 from io import BytesIO

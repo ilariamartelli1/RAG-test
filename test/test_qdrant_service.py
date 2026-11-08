@@ -1,3 +1,5 @@
+"""Tests for Qdrant startup and readiness checks."""
+
 import subprocess
 import unittest
 from unittest.mock import MagicMock, call, patch

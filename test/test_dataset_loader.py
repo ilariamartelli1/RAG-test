@@ -1,3 +1,5 @@
+"""Tests for dataset loading and source record conversion."""
+
 import unittest
 from unittest.mock import patch
 

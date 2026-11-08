@@ -1,3 +1,5 @@
+"""Tests for dataset row formatting."""
+
 import unittest
 
 import pandas as pd

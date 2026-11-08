@@ -1,3 +1,5 @@
+"""Tests for the obsolete DataFrame-based dataset ingestion path."""
+
 import unittest
 from unittest.mock import MagicMock, call, patch
 

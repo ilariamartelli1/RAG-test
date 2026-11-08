@@ -1,3 +1,5 @@
+"""Provide language model generation through an Ollama server."""
+
 from .http_helper import post_json
 
 

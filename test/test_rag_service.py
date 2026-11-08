@@ -1,3 +1,5 @@
+"""Tests for retrieval-augmented question answering."""
+
 import unittest
 from unittest.mock import MagicMock, patch
 

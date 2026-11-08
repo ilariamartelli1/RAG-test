@@ -1,3 +1,5 @@
+"""Extract text-based PDF pages into source records without OCR."""
+
 from io import BytesIO
 
 from pypdf import PdfReader

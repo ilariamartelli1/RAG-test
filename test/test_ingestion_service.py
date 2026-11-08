@@ -1,3 +1,5 @@
+"""Tests for record ingestion orchestration and batching."""
+
 import unittest
 from unittest.mock import MagicMock
 

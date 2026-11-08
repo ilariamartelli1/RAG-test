@@ -1,3 +1,5 @@
+"""Select a document loader using the filename extension."""
+
 from pathlib import Path
 
 from .pdf_loader import load_pdf_records

@@ -1,3 +1,5 @@
+"""Split structured dataset records into field-aware chunks."""
+
 from dataclasses import dataclass
 
 import pandas as pd

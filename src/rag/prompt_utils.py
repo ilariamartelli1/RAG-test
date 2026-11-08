@@ -1,3 +1,6 @@
+"""Build language model prompts from questions and retrieved context."""
+
+
 def message_with_context(question: str, context: str) -> str:
     """
     Build the user message with context for the LLM prompt.

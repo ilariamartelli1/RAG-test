@@ -1,3 +1,5 @@
+"""Tests for the OpenAI provider adapter."""
+
 import unittest
 from unittest.mock import patch
 from urllib.error import URLError

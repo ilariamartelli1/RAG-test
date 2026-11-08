@@ -1,3 +1,5 @@
+"""Send JSON POST requests for HTTP-based language model providers."""
+
 import json
 from urllib.request import Request, urlopen
 

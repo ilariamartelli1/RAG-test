@@ -1,3 +1,5 @@
+"""Tests for UTF-8 text document loading."""
+
 import unittest
 
 from src.loaders.text_loader import load_text_records

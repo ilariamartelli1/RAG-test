@@ -1,3 +1,5 @@
+"""Coordinate document loading, text chunking and storage."""
+
 from collections.abc import Callable
 from functools import partial
 

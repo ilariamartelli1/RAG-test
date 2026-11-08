@@ -1,3 +1,5 @@
+"""Tests for chunk payload validation."""
+
 import unittest
 
 from pydantic import ValidationError

@@ -1,3 +1,5 @@
+"""Tests for hash identifiers and duplicate grouping."""
+
 import unittest
 from unittest.mock import patch
 

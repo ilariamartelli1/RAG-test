@@ -1,3 +1,8 @@
+"""Obsolete DataFrame-based ingestion retained for compatibility.
+
+The active pipeline uses ``ingestion_service.ingest_records`` instead.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

@@ -1,3 +1,5 @@
+"""Load datasets and convert DataFrame rows into source records."""
+
 import pandas as pd
 from datasets import load_dataset
 

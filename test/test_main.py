@@ -1,3 +1,5 @@
+"""Tests for the example entry point and import safety."""
+
 import importlib
 import os
 import runpy

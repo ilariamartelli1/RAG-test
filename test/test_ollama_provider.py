@@ -1,3 +1,5 @@
+"""Tests for the Ollama provider adapter."""
+
 import unittest
 from unittest.mock import patch
 from urllib.error import URLError

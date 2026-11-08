@@ -1,3 +1,5 @@
+"""Provide language model generation through the OpenAI API."""
+
 from .http_helper import post_json
 
 

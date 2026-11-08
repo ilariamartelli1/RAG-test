@@ -1,3 +1,5 @@
+"""Start Qdrant when needed and wait for its readiness endpoint."""
+
 import socket
 import subprocess
 import sys

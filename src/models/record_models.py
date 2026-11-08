@@ -1,3 +1,5 @@
+"""Define source records shared by loaders and chunkers."""
+
 from pydantic import BaseModel, JsonValue
 
 

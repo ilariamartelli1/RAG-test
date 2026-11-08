@@ -1,3 +1,5 @@
+"""Tests for Qdrant collection setup."""
+
 import unittest
 from unittest.mock import MagicMock
 

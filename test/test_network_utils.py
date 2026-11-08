@@ -1,3 +1,5 @@
+"""Tests for the network connectivity check."""
+
 import unittest
 from unittest.mock import patch
 

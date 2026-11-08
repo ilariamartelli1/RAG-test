@@ -1,3 +1,5 @@
+"""Define the chunk payload shared by ingestion, storage and retrieval."""
+
 from pydantic import BaseModel, JsonValue
 
 

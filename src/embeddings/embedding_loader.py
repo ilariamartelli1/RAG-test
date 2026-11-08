@@ -1,3 +1,5 @@
+"""Load a sentence-transformer embedding model and select its batch size."""
+
 from sentence_transformers import SentenceTransformer
 from torch import cuda
 

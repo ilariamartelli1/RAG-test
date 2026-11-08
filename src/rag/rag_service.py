@@ -1,3 +1,5 @@
+"""Retrieve context and generate answers through a language model provider."""
+
 from __future__ import annotations
 
 import time

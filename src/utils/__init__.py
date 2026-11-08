@@ -1,1 +1,1 @@
-"""Shared formatting utilities."""
+"""Shared formatting, identifier and network utilities."""

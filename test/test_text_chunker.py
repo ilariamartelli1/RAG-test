@@ -1,3 +1,5 @@
+"""Tests for text chunking and document ingestion."""
+
 import unittest
 from functools import partial
 from unittest.mock import MagicMock

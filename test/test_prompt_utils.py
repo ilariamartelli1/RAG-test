@@ -1,3 +1,5 @@
+"""Tests for retrieval-augmented prompt construction."""
+
 import unittest
 
 from src.rag.prompt_utils import build_rag_prompt, message_with_context

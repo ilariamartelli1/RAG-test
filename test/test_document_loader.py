@@ -1,3 +1,5 @@
+"""Tests for document loader selection."""
+
 import unittest
 from unittest.mock import patch
 

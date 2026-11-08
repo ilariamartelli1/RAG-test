@@ -1,3 +1,5 @@
+"""Check network connectivity before running the pipeline."""
+
 import socket
 import sys
 

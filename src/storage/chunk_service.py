@@ -1,3 +1,5 @@
+"""Embed, store and retrieve chunk payloads using Qdrant."""
+
 from __future__ import annotations
 
 import json

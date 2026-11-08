@@ -1,3 +1,5 @@
+"""Tests for Qdrant chunk storage and retrieval."""
+
 import unittest
 from unittest.mock import MagicMock
 

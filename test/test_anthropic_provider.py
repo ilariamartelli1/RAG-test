@@ -1,3 +1,5 @@
+"""Tests for the Anthropic provider adapter."""
+
 import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
