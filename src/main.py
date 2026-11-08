@@ -1,4 +1,6 @@
 import os
+from functools import partial
+
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from anthropic import Anthropic
@@ -6,24 +8,26 @@ from anthropic import Anthropic
 if __package__:
     from .providers.anthropic_provider import AnthropicProvider
     from .storage.collection_service import ensure_collection
-    from .processing.dataset_ingestion import ingest_dataset
-    from .processing.dataset_loader import load_dataset_dataframe
-    from .processing.dataset_utils import row_to_text
+    from .processing.dataset_loader import load_dataset_records
+    from .processing.dataset_utils import chunk_dataset_record, row_to_text
     from .processing.embedding_loader import load_sentence_transformer
+    from .processing.ingestion_service import ingest_records
     from .id_utils import group_positions_by_id
     from .network_utils import is_online
     from .storage.qdrant_service import ensure_qdrant
+    from .storage.chunk_service import store_chunks
     from .rag.rag_service import ask
 else:
     from providers.anthropic_provider import AnthropicProvider
     from storage.collection_service import ensure_collection
-    from processing.dataset_ingestion import ingest_dataset
-    from processing.dataset_loader import load_dataset_dataframe
-    from processing.dataset_utils import row_to_text
+    from processing.dataset_loader import load_dataset_records
+    from processing.dataset_utils import chunk_dataset_record, row_to_text
     from processing.embedding_loader import load_sentence_transformer
+    from processing.ingestion_service import ingest_records
     from id_utils import group_positions_by_id
     from network_utils import is_online
     from storage.qdrant_service import ensure_qdrant
+    from storage.chunk_service import store_chunks
     from rag.rag_service import ask
 
 ###############
@@ -69,21 +73,33 @@ def main() -> None:
     if ensure_collection(qdrant, COLLECTION, embedding_dimension):
         print(f"\nCollection '{COLLECTION}' created")
 
-    df = load_dataset_dataframe(
+    records = load_dataset_records(
         DATASET_NAME,
         split="train",
         drop_columns=["Unnamed: 0", "Image_Name"],
     )
-    df["full_text"] = df.apply(row_to_text, axis=1)
 
     print(f"\nQdrant status: {qdrant.get_collections()}")
-    print(f"{len(df)} recipes loaded. Will use embedding model: {EMBED_MODEL}")
+    print(f"{len(records)} recipes loaded. Will use embedding model: {EMBED_MODEL}")
 
-    ingest_dataset(df, DATASET_NAME, qdrant, embedder, COLLECTION, BATCH_SIZE, embedding_batch_size)
+    ingest_records(
+        loader=lambda: records,
+        chunker=chunk_dataset_record,
+        store=partial(
+            store_chunks, qdrant, embedder, COLLECTION,
+            embedding_batch_size=embedding_batch_size,
+        ),
+        chunk_batch_size=BATCH_SIZE,
+    )
     print(f"Done! Total chunks in collection '{COLLECTION}': {qdrant.count(COLLECTION).count}")
 
     print("\nChecking for duplicate rows...")
-    duplicate_ids = group_positions_by_id(df["full_text"])
+    row_texts = []
+    for record in records:
+        if not isinstance(record.content, dict):
+            raise ValueError("Dataset record content must be a field mapping")
+        row_texts.append(row_to_text(record.content))
+    duplicate_ids = group_positions_by_id(row_texts)
     duplicates = {k: v for k, v in duplicate_ids.items() if len(v) > 1}
 
     if duplicates:
@@ -91,7 +107,7 @@ def main() -> None:
     else:
         print("No duplicate hashes in dataset")
 
-    print(f"Dataset has {len(duplicate_ids)} unique hashes out of {len(df)} recipes")
+    print(f"Dataset has {len(duplicate_ids)} unique hashes out of {len(records)} recipes")
 
     ask(
         "I want to cook something with chicken and tomatoes. What do you suggest?",
