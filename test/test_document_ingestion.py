@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.processing.document_ingestion import ingest_document
+from src.ingestion.document_ingestion import ingest_document
 from src.models.record_models import SourceRecord
 
 
@@ -49,7 +49,7 @@ class DocumentIngestionTests(unittest.TestCase):
         self.assertEqual(ingest_document(b"", "empty.txt", store, 2), 0)
         store.assert_not_called()
 
-    @patch("src.processing.document_ingestion.load_document_records")
+    @patch("src.ingestion.document_ingestion.load_document_records")
     def test_rejects_invalid_sizes_before_loading(self, load_document) -> None:
         for batch_size, chunk_size in ((0, 10), (-1, 10), (2, 0), (2, -1)):
             with self.subTest(batch_size=batch_size, chunk_size=chunk_size):

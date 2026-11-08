@@ -28,7 +28,7 @@ class MainTests(unittest.TestCase):
     @patch("src.storage.qdrant_service.ensure_qdrant")
     @patch("src.processing.embedding_loader.load_sentence_transformer")
     @patch("src.loaders.dataset_loader.load_dataset_records")
-    @patch("src.processing.ingestion_service.ingest_records")
+    @patch("src.ingestion.ingestion_service.ingest_records")
     @patch("src.storage.chunk_service.store_chunks")
     @patch("src.rag.rag_service.ask")
     @patch("qdrant_client.QdrantClient")
@@ -54,7 +54,7 @@ class MainTests(unittest.TestCase):
     @patch("src.providers.anthropic_provider.AnthropicProvider")
     @patch("src.storage.collection_service.ensure_collection")
     @patch("src.loaders.dataset_loader.load_dataset_records")
-    @patch("src.processing.ingestion_service.ingest_records")
+    @patch("src.ingestion.ingestion_service.ingest_records")
     @patch("src.rag.rag_service.ask")
     @patch("builtins.print")
     def test_running_as_main_executes_pipeline(

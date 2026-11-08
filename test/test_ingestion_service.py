@@ -6,7 +6,7 @@ import pandas as pd
 from src.models.chunk_models import ChunkPayload
 from src.loaders.dataset_loader import dataframe_to_records
 from src.chunkers.dataset_chunker import chunk_dataset_record
-from src.processing.ingestion_service import ingest_records
+from src.ingestion.ingestion_service import ingest_records
 from src.models.record_models import SourceRecord
 
 

@@ -12,7 +12,7 @@ if __package__:
     from .loaders.dataset_loader import load_dataset_records
     from .processing.dataset_utils import row_to_text
     from .processing.embedding_loader import load_sentence_transformer
-    from .processing.ingestion_service import ingest_records
+    from .ingestion.ingestion_service import ingest_records
     from .id_utils import group_positions_by_id
     from .network_utils import is_online
     from .storage.qdrant_service import ensure_qdrant
@@ -25,7 +25,7 @@ else:
     from loaders.dataset_loader import load_dataset_records
     from processing.dataset_utils import row_to_text
     from processing.embedding_loader import load_sentence_transformer
-    from processing.ingestion_service import ingest_records
+    from ingestion.ingestion_service import ingest_records
     from id_utils import group_positions_by_id
     from network_utils import is_online
     from storage.qdrant_service import ensure_qdrant
