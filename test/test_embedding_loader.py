@@ -1,12 +1,12 @@
 import unittest
 from unittest.mock import patch
 
-from src.processing.embedding_loader import load_sentence_transformer
+from src.embeddings.embedding_loader import load_sentence_transformer
 
 
 class EmbeddingLoaderTests(unittest.TestCase):
-    @patch("src.processing.embedding_loader.SentenceTransformer")
-    @patch("src.processing.embedding_loader.cuda.is_available", return_value=False)
+    @patch("src.embeddings.embedding_loader.SentenceTransformer")
+    @patch("src.embeddings.embedding_loader.cuda.is_available", return_value=False)
     @patch("builtins.print")
     def test_loads_cpu_model(self, print_mock, is_available, model_class) -> None:
         model, batch_size = load_sentence_transformer("example-model")
@@ -16,9 +16,9 @@ class EmbeddingLoaderTests(unittest.TestCase):
         self.assertEqual(batch_size, 32)
         print_mock.assert_called_once_with("\nCUDA is not available. Using CPU for embeddings.")
 
-    @patch("src.processing.embedding_loader.SentenceTransformer")
-    @patch("src.processing.embedding_loader.cuda.is_available", return_value=True)
-    @patch("src.processing.embedding_loader.cuda.get_device_name", return_value="Example GPU")
+    @patch("src.embeddings.embedding_loader.SentenceTransformer")
+    @patch("src.embeddings.embedding_loader.cuda.is_available", return_value=True)
+    @patch("src.embeddings.embedding_loader.cuda.get_device_name", return_value="Example GPU")
     @patch("builtins.print")
     def test_loads_cuda_model(self, print_mock, device_name, is_available, model_class) -> None:
         model, batch_size = load_sentence_transformer("example-model")
@@ -31,8 +31,8 @@ class EmbeddingLoaderTests(unittest.TestCase):
             "\nCUDA is available. Using GPU Example GPU for embeddings."
         )
 
-    @patch("src.processing.embedding_loader.SentenceTransformer", side_effect=RuntimeError("failed"))
-    @patch("src.processing.embedding_loader.cuda.is_available", return_value=False)
+    @patch("src.embeddings.embedding_loader.SentenceTransformer", side_effect=RuntimeError("failed"))
+    @patch("src.embeddings.embedding_loader.cuda.is_available", return_value=False)
     def test_model_loading_errors_propagate(self, is_available, model_class) -> None:
         with self.assertRaisesRegex(RuntimeError, "failed"):
             load_sentence_transformer("example-model")

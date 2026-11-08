@@ -11,7 +11,7 @@ if __package__:
     from .chunkers.dataset_chunker import chunk_dataset_record
     from .loaders.dataset_loader import load_dataset_records
     from .processing.dataset_utils import row_to_text
-    from .processing.embedding_loader import load_sentence_transformer
+    from .embeddings.embedding_loader import load_sentence_transformer
     from .ingestion.ingestion_service import ingest_records
     from .id_utils import group_positions_by_id
     from .network_utils import is_online
@@ -24,7 +24,7 @@ else:
     from chunkers.dataset_chunker import chunk_dataset_record
     from loaders.dataset_loader import load_dataset_records
     from processing.dataset_utils import row_to_text
-    from processing.embedding_loader import load_sentence_transformer
+    from embeddings.embedding_loader import load_sentence_transformer
     from ingestion.ingestion_service import ingest_records
     from id_utils import group_positions_by_id
     from network_utils import is_online
