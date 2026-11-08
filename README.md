@@ -13,4 +13,5 @@ key. The current example in `main.py` still uses Anthropic.
 
 A UTF-8 text loader and text chunker are available in
 `src/processing/text_loader.py` and `src/processing/text_chunker.py`; they are
-not yet connected to the example pipeline or a web interface.
+not yet connected to the example pipeline or a web interface. They also accept
+UTF-8 Markdown as text, preserving its markup without interpreting its structure.

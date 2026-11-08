@@ -80,6 +80,29 @@ class TextChunkerTests(unittest.TestCase):
             [0, 1, 2, 3],
         )
 
+    def test_loads_and_chunks_markdown_without_changing_markup(self) -> None:
+        markdown = (
+            "# Guide\n\n"
+            "Read **carefully** and see [details](https://example.com).\n\n"
+            "- First item\n- Second item\n"
+            "```python\nprint('hello')\n```\n"
+        )
+
+        records = load_text_records(markdown.encode("utf-8"), "guide.md")
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].content, markdown)
+        self.assertEqual(records[0].metadata, {"source": "guide.md"})
+
+        chunks = chunk_text_record(records[0], max_chunk_chars=24)
+
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(0 < len(chunk.text) <= 24 for chunk in chunks))
+        self.assertEqual("".join(chunk.text for chunk in chunks), markdown)
+        self.assertEqual(
+            [chunk.metadata for chunk in chunks],
+            [{"source": "guide.md", "chunk_index": index} for index in range(len(chunks))],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
