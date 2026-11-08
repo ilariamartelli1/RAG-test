@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pandas as pd
 
-from src.processing.dataset_ingestion import ingest_dataset
+from src.ingestion.dataset_ingestion import ingest_dataset
 
 
 class DatasetIngestionTests(unittest.TestCase):
@@ -11,7 +11,7 @@ class DatasetIngestionTests(unittest.TestCase):
         self.qdrant = MagicMock()
         self.embedder = MagicMock()
 
-    @patch("src.processing.dataset_ingestion.store_chunks", side_effect=[2, 1])
+    @patch("src.ingestion.dataset_ingestion.store_chunks", side_effect=[2, 1])
     @patch("builtins.print")
     def test_ingests_rows_in_batches(self, print_mock, store) -> None:
         dataframe = pd.DataFrame(
@@ -38,18 +38,18 @@ class DatasetIngestionTests(unittest.TestCase):
             call("Progress: 3/3 (+1 new chunks)"),
         ])
 
-    @patch("src.processing.dataset_ingestion.store_chunks")
+    @patch("src.ingestion.dataset_ingestion.store_chunks")
     def test_empty_dataset_does_not_store(self, store) -> None:
         ingest_dataset(pd.DataFrame(), "source", self.qdrant, self.embedder, "data", 2, 8)
         store.assert_not_called()
 
-    @patch("src.processing.dataset_ingestion.store_chunks")
+    @patch("src.ingestion.dataset_ingestion.store_chunks")
     def test_invalid_batch_size_is_rejected(self, store) -> None:
         with self.assertRaisesRegex(ValueError, "batch_size"):
             ingest_dataset(pd.DataFrame(), "source", self.qdrant, self.embedder, "data", 0, 8)
         store.assert_not_called()
 
-    @patch("src.processing.dataset_ingestion.store_chunks", side_effect=RuntimeError("unavailable"))
+    @patch("src.ingestion.dataset_ingestion.store_chunks", side_effect=RuntimeError("unavailable"))
     def test_storage_errors_propagate(self, store) -> None:
         dataframe = pd.DataFrame({"field": ["alpha"], "full_text": ["a"]})
         with self.assertRaisesRegex(RuntimeError, "unavailable"):
