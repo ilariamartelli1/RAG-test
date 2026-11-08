@@ -18,4 +18,5 @@ structure.
 `src/processing/pdf_loader.py` extracts text per PDF page, but does not support
 encrypted PDFs or OCR for scanned pages. Image-only pages have no extracted
 text, and documents with no extractable text are rejected. These loaders are
-not yet connected to the example pipeline or a web interface.
+selected by filename extension through `src/processing/document_loader.py`.
+They are not yet connected to the example pipeline or a web interface.
