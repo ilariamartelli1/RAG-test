@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from src.processing.dataset_utils import row_to_text
+from src.utils.dataset_utils import row_to_text
 
 
 class DatasetUtilsTests(unittest.TestCase):

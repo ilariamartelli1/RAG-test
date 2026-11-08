@@ -4,11 +4,11 @@ import pandas as pd
 
 if "." in __package__:
     from ..models.chunk_models import ChunkPayload
-    from ..processing.dataset_utils import row_to_text, value_to_text
+    from ..utils.dataset_utils import row_to_text, value_to_text
     from ..models.record_models import SourceRecord
 else:
     from models.chunk_models import ChunkPayload
-    from processing.dataset_utils import row_to_text, value_to_text
+    from utils.dataset_utils import row_to_text, value_to_text
     from models.record_models import SourceRecord
 
 
