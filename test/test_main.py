@@ -15,6 +15,7 @@ from src.loaders.dataset_loader import dataframe_to_records
 from src.chunkers.dataset_chunker import chunk_dataset_row
 from src.utils.dataset_utils import row_to_text
 from src.models.record_models import SourceRecord
+from src.embeddings.sentence_transformer_provider import SentenceTransformerProvider
 
 
 class MainTests(unittest.TestCase):
@@ -128,6 +129,9 @@ class MainTests(unittest.TestCase):
             drop_columns=["Unnamed: 0", "Image_Name"],
         )
         batches = [call.args[3] for call in mocks["store_chunks"].call_args_list]
+        embedding_provider = mocks["store_chunks"].call_args_list[0].args[1]
+        self.assertIsInstance(embedding_provider, SentenceTransformerProvider)
+        self.assertIs(embedding_provider.model, embedder)
         self.assertEqual([len(batch) for batch in batches], [2, 2, 1])
         dataframe["full_text"] = dataframe.apply(row_to_text, axis=1)
         old_chunks = [
@@ -148,13 +152,13 @@ class MainTests(unittest.TestCase):
             old_chunks,
         )
         for call in mocks["store_chunks"].call_args_list:
-            self.assertEqual(call.args[:3], (qdrant, embedder, main_module.COLLECTION))
+            self.assertEqual(call.args[:3], (qdrant, embedding_provider, main_module.COLLECTION))
             self.assertEqual(call.kwargs, {"embedding_batch_size": 32})
         print_mock.assert_any_call("Found 1 duplicate hash IDs in dataset")
         print_mock.assert_any_call("Dataset has 2 unique hashes out of 3 recipes")
         mocks["ask"].assert_called_once_with(
             "I want to cook something with chicken and tomatoes. What do you suggest?",
-            qdrant=qdrant, embedder=embedder, collection=main_module.COLLECTION,
+            qdrant=qdrant, embedder=embedding_provider, collection=main_module.COLLECTION,
             embedding_batch_size=32, llm=provider, system_prompt=main_module.RAG_SYSTEM_PROMPT,
         )
 

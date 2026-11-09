@@ -7,14 +7,15 @@ from typing import TYPE_CHECKING, Protocol
 
 if "." in __package__:
     from ..storage.chunk_service import retrieve_chunks
+    from ..embeddings.embedding_provider import EmbeddingProvider
 else:
     from storage.chunk_service import retrieve_chunks
+    from embeddings.embedding_provider import EmbeddingProvider
 
 from .prompt_utils import build_rag_prompt
 
 if TYPE_CHECKING:
     from qdrant_client import QdrantClient
-    from sentence_transformers import SentenceTransformer
 
 
 class LLMProvider(Protocol):
@@ -28,7 +29,7 @@ def ask(
     question: str,
     *,
     qdrant: QdrantClient,
-    embedder: SentenceTransformer,
+    embedder: EmbeddingProvider,
     collection: str,
     embedding_batch_size: int,
     llm: LLMProvider,
@@ -41,7 +42,7 @@ def ask(
     Args:
         question (str): User question.
         qdrant (QdrantClient): Client connected to Qdrant.
-        embedder (SentenceTransformer): Model used to embed the question.
+        embedder (EmbeddingProvider): Provider used to embed the question.
         collection (str): Qdrant collection to search.
         embedding_batch_size (int): Batch size used by the embedding model.
         llm (LLMProvider): Provider used to generate the answer.

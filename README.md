@@ -103,9 +103,10 @@ complete application.
    sends chunks to a storage callback in batches. `storage/chunk_service.py`
    embeds and stores chunks in Qdrant; `utils/id_utils.py` derives identifiers
    from chunk payloads. `storage/collection_service.py` prepares a collection.
-   The planned embedding-provider interface will allow an Ollama embedding
-   model or the existing SentenceTransformers loader in
-   `embeddings/embedding_loader.py`.
+   `embeddings/embedding_provider.py` defines an embedding interface, and
+   `embeddings/sentence_transformer_provider.py` adapts the existing model
+   loaded by `embeddings/embedding_loader.py`. An Ollama embedding provider
+   remains planned.
 
 6. **Keep the index compatible with its settings.** The planned application
    will associate an index with its document, embedding model and indexing

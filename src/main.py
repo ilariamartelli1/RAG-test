@@ -14,6 +14,7 @@ if __package__:
     from .loaders.dataset_loader import load_dataset_records
     from .utils.dataset_utils import row_to_text
     from .embeddings.embedding_loader import load_sentence_transformer
+    from .embeddings.sentence_transformer_provider import SentenceTransformerProvider
     from .ingestion.ingestion_service import ingest_records
     from .utils.id_utils import group_positions_by_id
     from .utils.network_utils import is_online
@@ -27,6 +28,7 @@ else:
     from loaders.dataset_loader import load_dataset_records
     from utils.dataset_utils import row_to_text
     from embeddings.embedding_loader import load_sentence_transformer
+    from embeddings.sentence_transformer_provider import SentenceTransformerProvider
     from ingestion.ingestion_service import ingest_records
     from utils.id_utils import group_positions_by_id
     from utils.network_utils import is_online
@@ -66,8 +68,9 @@ def main() -> None:
     # Enable expandable GPU memory segments to reduce fragmentation
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
-    embedder, embedding_batch_size = load_sentence_transformer(EMBED_MODEL)
-    embedding_dimension = embedder.get_embedding_dimension()
+    model, embedding_batch_size = load_sentence_transformer(EMBED_MODEL)
+    embedding_dimension = model.get_embedding_dimension()
+    embedder = SentenceTransformerProvider(model)
     print(f"Sentence embedding dimension: {embedding_dimension}")
     print(f"Using embedding batch size: {embedding_batch_size}")
 

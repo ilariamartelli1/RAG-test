@@ -114,7 +114,7 @@ class DocumentIngestionIntegrationTests(unittest.TestCase):
                     vectors_config=VectorParams(size=2, distance=Distance.COSINE),
                 )
                 embedder = MagicMock()
-                embedder.encode.return_value.tolist.return_value = [[1.0, 0.0]]
+                embedder.embed_documents.return_value = [[1.0, 0.0]]
                 store = partial(store_chunks, qdrant, embedder, "documents", embedding_batch_size=8)
 
                 stored = ingest_document(data, filename, store, chunk_batch_size=1, max_chunk_chars=12)
@@ -124,9 +124,9 @@ class DocumentIngestionIntegrationTests(unittest.TestCase):
                 self.assertEqual(
                     ingest_document(data, filename, store, chunk_batch_size=1, max_chunk_chars=12), 0
                 )
-                self.assertEqual(embedder.encode.call_count, len(expected))
+                self.assertEqual(embedder.embed_documents.call_count, len(expected))
 
-                embedder.encode.return_value.tolist.return_value = [1.0, 0.0]
+                embedder.embed_query.return_value = [1.0, 0.0]
                 results = retrieve_chunks(qdrant, embedder, "documents", "question", 8)
 
                 actual = [(chunk.text, chunk.metadata) for chunk, _ in results]

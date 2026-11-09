@@ -3,25 +3,22 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
-
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 
 if "." in __package__:
     from ..utils.id_utils import make_id
     from ..models.chunk_models import ChunkPayload
+    from ..embeddings.embedding_provider import EmbeddingProvider
 else:
     from utils.id_utils import make_id
     from models.chunk_models import ChunkPayload
-
-if TYPE_CHECKING:
-    from sentence_transformers import SentenceTransformer
+    from embeddings.embedding_provider import EmbeddingProvider
 
 
 def store_chunks(
     qdrant: QdrantClient,
-    embedder: SentenceTransformer,
+    embedder: EmbeddingProvider,
     collection: str,
     chunks: list[ChunkPayload],
     embedding_batch_size: int,
@@ -31,7 +28,7 @@ def store_chunks(
 
     Args:
         qdrant (QdrantClient): Client connected to Qdrant.
-        embedder (SentenceTransformer): Model used to embed chunk text.
+        embedder (EmbeddingProvider): Provider used to embed chunk text.
         collection (str): Name of the target Qdrant collection.
         chunks (list[ChunkPayload]): Text and metadata to store.
         embedding_batch_size (int): Batch size used by the embedding model.
@@ -56,11 +53,9 @@ def store_chunks(
     if not new_chunks:
         return 0
 
-    embeddings = embedder.encode(
-        [chunk.text for _, chunk in new_chunks],
-        batch_size=embedding_batch_size,
-        show_progress_bar=False,
-    ).tolist()
+    embeddings = embedder.embed_documents(
+        [chunk.text for _, chunk in new_chunks], embedding_batch_size
+    )
     points = [
         PointStruct(id=point_id, vector=vector, payload=chunk.model_dump())
         for (point_id, chunk), vector in zip(new_chunks, embeddings, strict=True)
@@ -71,7 +66,7 @@ def store_chunks(
 
 def retrieve_chunks(
     qdrant: QdrantClient,
-    embedder: SentenceTransformer,
+    embedder: EmbeddingProvider,
     collection: str,
     query: str,
     embedding_batch_size: int,
@@ -83,7 +78,7 @@ def retrieve_chunks(
 
     Args:
         qdrant (QdrantClient): Client connected to Qdrant.
-        embedder (SentenceTransformer): Model used to embed the query.
+        embedder (EmbeddingProvider): Provider used to embed the query.
         collection (str): Name of the Qdrant collection to search.
         query (str): Question or text to search for.
         embedding_batch_size (int): Batch size used by the embedding model.
@@ -93,11 +88,7 @@ def retrieve_chunks(
     Returns:
         list[tuple[ChunkPayload, float]]: Chunks and their similarity scores.
     """
-    query_vector = embedder.encode(
-        query,
-        batch_size=embedding_batch_size,
-        show_progress_bar=False,
-    ).tolist()
+    query_vector = embedder.embed_query(query, embedding_batch_size)
     results = qdrant.query_points(
         collection_name=collection,
         query=query_vector,

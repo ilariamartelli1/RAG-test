@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, call, patch
 import pandas as pd
 
 from src.ingestion.dataset_ingestion import ingest_dataset
+from src.embeddings.sentence_transformer_provider import SentenceTransformerProvider
 
 
 class DatasetIngestionTests(unittest.TestCase):
@@ -25,7 +26,11 @@ class DatasetIngestionTests(unittest.TestCase):
 
         self.assertEqual(store.call_count, 2)
         first = store.call_args_list[0].args
-        self.assertEqual(first[:3], (self.qdrant, self.embedder, "data"))
+        self.assertEqual(first[0], self.qdrant)
+        self.assertIsInstance(first[1], SentenceTransformerProvider)
+        self.assertIs(first[1].model, self.embedder)
+        self.assertEqual(first[2], "data")
+        self.assertIs(store.call_args_list[1].args[1], first[1])
         self.assertEqual(first[4], 8)
         self.assertEqual([chunk.text for chunk in first[3]], [
             "Record: 10\nfield: alpha",
