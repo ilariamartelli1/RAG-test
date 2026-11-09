@@ -6,8 +6,9 @@ text-based PDF document, choose models and settings, build an index, and
 receive answers with supporting excerpts.
 
 **This describes the target architecture.** Some components already exist,
-but the web UI, local Ollama embeddings, document-scoped retrieval and parts
-of the workflow are still planned.
+but the web UI, document-scoped retrieval and parts of the workflow are still
+planned. An Ollama embedding adapter exists but is not yet selected by the
+application.
 
 ## Architecture
 
@@ -105,8 +106,9 @@ complete application.
    from chunk payloads. `storage/collection_service.py` prepares a collection.
    `embeddings/embedding_provider.py` defines an embedding interface, and
    `embeddings/sentence_transformer_provider.py` adapts the existing model
-   loaded by `embeddings/embedding_loader.py`. An Ollama embedding provider
-   remains planned.
+   loaded by `embeddings/embedding_loader.py`.
+   `embeddings/ollama_embedding_provider.py` provides Ollama embeddings, but
+   runtime provider selection remains planned.
 
 6. **Keep the index compatible with its settings.** The planned application
    will associate an index with its document, embedding model and indexing
