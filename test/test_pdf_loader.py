@@ -1,6 +1,7 @@
 """Tests for PDF text extraction and ingestion."""
 
 import unittest
+from contextlib import closing
 from functools import partial
 from io import BytesIO
 from unittest.mock import MagicMock
@@ -8,10 +9,14 @@ from unittest.mock import MagicMock
 from pypdf import PdfWriter
 from pypdf.errors import PdfReadError
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams
 
+from src.ingestion.document_ingestion import ingest_document
 from src.ingestion.ingestion_service import ingest_records
 from src.loaders.pdf_loader import load_pdf_records
 from src.chunkers.text_chunker import chunk_text_record
+from src.storage.chunk_service import retrieve_chunks, store_chunks
 
 
 def make_pdf(pages: list[str], password: str | None = None) -> bytes:
@@ -83,6 +88,51 @@ class PdfLoaderTests(unittest.TestCase):
     def test_propagates_invalid_pdf_error(self) -> None:
         with self.assertRaises(PdfReadError):
             load_pdf_records(b"not a pdf", "invalid.pdf")
+
+
+class DocumentIngestionIntegrationTests(unittest.TestCase):
+    def test_ingests_and_retrieves_document_chunks(self) -> None:
+        cases = (
+            ("notes.txt", b"First text\nSecond text", [
+                ("First text\n", {"source": "notes.txt", "chunk_index": 0}),
+                ("Second text", {"source": "notes.txt", "chunk_index": 1}),
+            ]),
+            ("guide.md", b"# Heading\n\n**Details**", [
+                ("# Heading\n\n", {"source": "guide.md", "chunk_index": 0}),
+                ("**Details**", {"source": "guide.md", "chunk_index": 1}),
+            ]),
+            ("guide.pdf", make_pdf(["First page", "", "Third page"]), [
+                ("First page", {"source": "guide.pdf", "page": 1, "chunk_index": 0}),
+                ("Third page", {"source": "guide.pdf", "page": 3, "chunk_index": 0}),
+            ]),
+        )
+
+        for filename, data, expected in cases:
+            with self.subTest(filename=filename), closing(QdrantClient(":memory:")) as qdrant:
+                qdrant.create_collection(
+                    collection_name="documents",
+                    vectors_config=VectorParams(size=2, distance=Distance.COSINE),
+                )
+                embedder = MagicMock()
+                embedder.encode.return_value.tolist.return_value = [[1.0, 0.0]]
+                store = partial(store_chunks, qdrant, embedder, "documents", embedding_batch_size=8)
+
+                stored = ingest_document(data, filename, store, chunk_batch_size=1, max_chunk_chars=12)
+
+                self.assertEqual(stored, len(expected))
+                self.assertEqual(qdrant.count("documents").count, len(expected))
+                self.assertEqual(
+                    ingest_document(data, filename, store, chunk_batch_size=1, max_chunk_chars=12), 0
+                )
+                self.assertEqual(embedder.encode.call_count, len(expected))
+
+                embedder.encode.return_value.tolist.return_value = [1.0, 0.0]
+                results = retrieve_chunks(qdrant, embedder, "documents", "question", 8)
+
+                actual = [(chunk.text, chunk.metadata) for chunk, _ in results]
+                self.assertCountEqual(actual, expected)
+                for _, score in results:
+                    self.assertAlmostEqual(score, 1.0)
 
 
 if __name__ == "__main__":
