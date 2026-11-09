@@ -108,7 +108,9 @@ complete application.
    `embeddings/sentence_transformer_provider.py` adapts the existing model
    loaded by `embeddings/embedding_loader.py`.
    `embeddings/ollama_embedding_provider.py` provides Ollama embeddings, but
-   runtime provider selection remains planned.
+   runtime provider selection remains planned. A helper can determine vector
+   dimensions by embedding a probe; matching dimensions alone do not guarantee
+   that different models produce compatible vectors.
 
 6. **Keep the index compatible with its settings.** The planned application
    will associate an index with its document, embedding model and indexing
