@@ -103,7 +103,9 @@ complete application.
    document loader and chunker to `ingestion/ingestion_service.py`, which
    sends chunks to a storage callback in batches. `storage/chunk_service.py`
    embeds and stores chunks in Qdrant; `utils/id_utils.py` derives identifiers
-   from chunk payloads. `storage/collection_service.py` prepares a collection.
+   from chunk payloads. `storage/collection_service.py` creates a collection
+   or checks that an existing collection uses an unnamed vector with the
+   requested dimension and cosine distance.
    `embeddings/embedding_provider.py` defines an embedding interface, and
    `embeddings/sentence_transformer_provider.py` adapts the existing model
    loaded by `embeddings/embedding_loader.py`.
@@ -117,7 +119,8 @@ complete application.
    settings. Changing document content, embedding model or chunking settings
    will require an explicit rebuild before querying. Retrieval and generation
    setting changes will not require re-indexing. Document-scoped retrieval,
-   compatibility checks and staged indexing are not yet implemented.
+   model and indexing-setting compatibility checks and staged indexing are
+   not yet implemented.
 
 7. **Ask a question.** The planned UI will submit the question to
    `rag/rag_service.py`. The question is embedded using the index's embedding
