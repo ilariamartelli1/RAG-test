@@ -4,7 +4,7 @@ import unittest
 
 from pydantic import ValidationError
 
-from src.models.index_models import IndexSettings
+from src.models.index_models import IndexSettings, build_index_settings
 
 
 class IndexModelsTests(unittest.TestCase):
@@ -66,6 +66,55 @@ class IndexModelsTests(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             settings.max_chunk_chars = 500
+
+    def test_build_settings_from_document_bytes(self) -> None:
+        settings = build_index_settings(
+            document_bytes=b"abc",
+            document_filename="example.txt",
+            embedding_provider="ollama",
+            embedding_model="nomic-embed-text",
+            max_chunk_chars=1000,
+        )
+
+        self.assertEqual(settings.model_dump(), self.settings | {
+            "document_fingerprint":
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        })
+
+    def test_build_settings_reflects_document_changes(self) -> None:
+        arguments = {
+            "document_filename": "example.txt",
+            "embedding_provider": "ollama",
+            "embedding_model": "nomic-embed-text",
+            "max_chunk_chars": 1000,
+        }
+
+        first = build_index_settings(document_bytes=b"first", **arguments)
+        same = build_index_settings(document_bytes=b"first", **arguments)
+        changed = build_index_settings(document_bytes=b"second", **arguments)
+
+        self.assertEqual(first, same)
+        self.assertNotEqual(first.document_fingerprint, changed.document_fingerprint)
+
+    def test_build_settings_validates_inputs(self) -> None:
+        arguments = {
+            "document_bytes": b"example",
+            "document_filename": "example.txt",
+            "embedding_provider": "ollama",
+            "embedding_model": "nomic-embed-text",
+            "max_chunk_chars": 1000,
+        }
+        for field, value in (
+            ("document_filename", " "),
+            ("embedding_provider", ""),
+            ("embedding_model", "\t"),
+            ("max_chunk_chars", 0),
+        ):
+            with self.subTest(field=field), self.assertRaises(ValidationError):
+                build_index_settings(**(arguments | {field: value}))
+
+        with self.assertRaises(TypeError):
+            build_index_settings(**(arguments | {"document_bytes": "not bytes"}))
 
 
 if __name__ == "__main__":

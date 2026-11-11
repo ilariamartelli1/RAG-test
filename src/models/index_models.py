@@ -2,6 +2,11 @@
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+if "." in __package__:
+    from ..utils.id_utils import fingerprint_document
+else:
+    from utils.id_utils import fingerprint_document
+
 
 class IndexSettings(BaseModel):
     """Describe the document and embedding settings used for an index.
@@ -28,3 +33,21 @@ class IndexSettings(BaseModel):
         if not value.strip():
             raise ValueError("must not be empty or whitespace")
         return value
+
+
+def build_index_settings(
+    *,
+    document_bytes: bytes,
+    document_filename: str,
+    embedding_provider: str,
+    embedding_model: str,
+    max_chunk_chars: int,
+) -> IndexSettings:
+    """Create validated index settings from the original document bytes."""
+    return IndexSettings(
+        document_fingerprint=fingerprint_document(document_bytes),
+        document_filename=document_filename,
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
+        max_chunk_chars=max_chunk_chars,
+    )
