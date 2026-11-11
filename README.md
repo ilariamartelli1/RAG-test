@@ -116,11 +116,14 @@ complete application.
 
 6. **Keep the index compatible with its settings.** The planned application
    will associate an index with its document, embedding model and indexing
-   settings. Changing document content, embedding model or chunking settings
-   will require an explicit rebuild before querying. Retrieval and generation
+   settings. `models/index_models.py` defines an `IndexSettings` data
+   structure for the document's SHA-256 fingerprint and filename, embedding
+   provider and model, and maximum chunk size. It is not yet stored or checked.
+   Changing document content, embedding model or chunking settings will
+   require an explicit rebuild before querying. Retrieval and generation
    setting changes will not require re-indexing. Document-scoped retrieval,
    model and indexing-setting compatibility checks and staged indexing are
-   not yet implemented.
+   not yet implemented. A model name alone does not detect changed model weights.
 
 7. **Ask a question.** The planned UI will submit the question to
    `rag/rag_service.py`. The question is embedded using the index's embedding
