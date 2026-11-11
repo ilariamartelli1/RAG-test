@@ -4,7 +4,7 @@ import unittest
 
 from pydantic import ValidationError
 
-from src.models.index_models import IndexSettings, build_index_settings
+from src.models.index_models import IndexSettings, build_index_settings, compare_index_settings
 
 
 class IndexModelsTests(unittest.TestCase):
@@ -34,6 +34,40 @@ class IndexModelsTests(unittest.TestCase):
         ):
             with self.subTest(field=field):
                 self.assertNotEqual(original, IndexSettings(**(self.settings | {field: value})))
+
+    def test_comparison_returns_no_fields_for_matching_settings(self) -> None:
+        saved = IndexSettings(**self.settings)
+        current = IndexSettings(**self.settings)
+
+        self.assertEqual(compare_index_settings(saved, current), [])
+
+    def test_comparison_reports_each_changed_setting(self) -> None:
+        saved = IndexSettings(**self.settings)
+        for field, value in (
+            ("document_fingerprint", "b" * 64),
+            ("document_filename", "other.txt"),
+            ("embedding_provider", "sentence-transformers"),
+            ("embedding_model", "other-model"),
+            ("max_chunk_chars", 500),
+        ):
+            with self.subTest(field=field):
+                current = IndexSettings(**(self.settings | {field: value}))
+                self.assertEqual(compare_index_settings(saved, current), [field])
+
+    def test_comparison_reports_multiple_changes_in_model_order(self) -> None:
+        saved = IndexSettings(**self.settings)
+        changed = self.settings | {
+            "max_chunk_chars": 500,
+            "embedding_model": "other-model",
+            "document_fingerprint": "b" * 64,
+        }
+        current = IndexSettings(**changed)
+        differences = ["document_fingerprint", "embedding_model", "max_chunk_chars"]
+
+        self.assertEqual(compare_index_settings(saved, current), differences)
+        self.assertEqual(compare_index_settings(current, saved), differences)
+        self.assertEqual(saved.model_dump(), self.settings)
+        self.assertEqual(current.model_dump(), changed)
 
     def test_invalid_settings_are_rejected(self) -> None:
         for field, value in (

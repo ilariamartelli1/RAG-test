@@ -51,3 +51,14 @@ def build_index_settings(
         embedding_model=embedding_model,
         max_chunk_chars=max_chunk_chars,
     )
+
+
+def compare_index_settings(saved: IndexSettings, current: IndexSettings) -> list[str]:
+    """Return differing field names in model order, without changing either input.
+
+    Matching settings do not establish that indexing completed or that model
+    weights are unchanged.
+    """
+    saved_fields = saved.model_dump()
+    current_fields = current.model_dump()
+    return [field for field in saved_fields if saved_fields[field] != current_fields[field]]
