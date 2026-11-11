@@ -122,9 +122,10 @@ complete application.
    a helper to fingerprint the original document bytes, and
    `build_index_settings` combines it with the other settings.
    `storage/collection_service.py` can create a new collection with those
-   settings in its metadata; this requires Qdrant collection metadata support.
-   These helpers are not yet connected to ingestion, and stored settings are
-   not yet checked when reusing a collection.
+   settings in its metadata and read them back; this requires Qdrant collection
+   metadata support. These helpers are not yet connected to ingestion, and
+   stored settings are not yet compared when reusing a collection. The
+   presence of settings does not mean indexing completed.
    Changing document content, embedding model or chunking settings will
    require an explicit rebuild before querying. Retrieval and generation
    setting changes will not require re-indexing. Document-scoped retrieval,

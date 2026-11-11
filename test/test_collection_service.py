@@ -1,4 +1,9 @@
-"""Tests for Qdrant collection setup."""
+"""Tests for Qdrant collection setup.
+
+QdrantClient(":memory:") runs locally without a server or disk storage, so its
+collections disappear when the client closes. The persistence test instead
+uses a temporary directory to check that metadata survives reopening.
+"""
 
 import unittest
 from contextlib import closing
@@ -13,6 +18,7 @@ from src.storage.collection_service import (
     INDEX_SETTINGS_METADATA_KEY,
     create_collection_with_settings,
     ensure_collection,
+    get_collection_index_settings,
 )
 
 
@@ -39,6 +45,61 @@ class CollectionServiceTests(unittest.TestCase):
                     collection.config.metadata[INDEX_SETTINGS_METADATA_KEY],
                     self.settings.model_dump(),
                 )
+                self.assertEqual(get_collection_index_settings(qdrant, "documents"), self.settings)
+
+    def test_reads_collection_index_settings(self) -> None:
+        qdrant = QdrantClient(":memory:")
+        self.addCleanup(qdrant.close)
+        create_collection_with_settings(qdrant, "documents", 3, self.settings)
+
+        self.assertEqual(get_collection_index_settings(qdrant, "documents"), self.settings)
+
+    def test_missing_index_settings_are_rejected_without_modification(self) -> None:
+        for metadata in (None, {}, {"other": "keep"}):
+            with self.subTest(metadata=metadata):
+                qdrant = QdrantClient(":memory:")
+                self.addCleanup(qdrant.close)
+                qdrant.create_collection(
+                    "documents",
+                    vectors_config=VectorParams(size=3, distance=Distance.COSINE),
+                    metadata=metadata,
+                )
+                qdrant.upsert("documents", points=[
+                    PointStruct(id=1, vector=[1.0, 0.0, 0.0], payload={"text": "keep"})
+                ])
+
+                with self.assertRaisesRegex(ValueError, "documents.*no index settings"):
+                    get_collection_index_settings(qdrant, "documents")
+
+                self.assertEqual(qdrant.get_collection("documents").config.metadata, metadata)
+                self.assertEqual(qdrant.count("documents").count, 1)
+
+    def test_invalid_index_settings_are_rejected_without_modification(self) -> None:
+        for value in (None, "invalid", {}, self.settings.model_dump() | {"unexpected": True}):
+            with self.subTest(value=value):
+                qdrant = QdrantClient(":memory:")
+                self.addCleanup(qdrant.close)
+                metadata = {INDEX_SETTINGS_METADATA_KEY: value}
+                qdrant.create_collection(
+                    "documents",
+                    vectors_config=VectorParams(size=3, distance=Distance.COSINE),
+                    metadata=metadata,
+                )
+
+                with self.assertRaisesRegex(ValueError, "documents.*invalid index settings"):
+                    get_collection_index_settings(qdrant, "documents")
+
+                self.assertEqual(qdrant.get_collection("documents").config.metadata, metadata)
+
+    def test_index_settings_lookup_errors_propagate(self) -> None:
+        qdrant = MagicMock()
+        qdrant.get_collection.side_effect = RuntimeError("unavailable")
+
+        with self.assertRaisesRegex(RuntimeError, "unavailable"):
+            get_collection_index_settings(qdrant, "documents")
+        qdrant.create_collection.assert_not_called()
+        qdrant.update_collection.assert_not_called()
+        qdrant.delete_collection.assert_not_called()
 
     def test_settings_creation_does_not_modify_existing_collection(self) -> None:
         qdrant = QdrantClient(":memory:")
