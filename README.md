@@ -118,7 +118,9 @@ complete application.
    will associate an index with its document, embedding model and indexing
    settings. `models/index_models.py` defines an `IndexSettings` data
    structure for the document's SHA-256 fingerprint and filename, embedding
-   provider and model, and maximum chunk size. It is not yet stored or checked.
+   provider and model, and maximum chunk size. `utils/id_utils.py` provides
+   a helper to fingerprint the original document bytes. These are not yet
+   connected to ingestion or stored or checked.
    Changing document content, embedding model or chunking settings will
    require an explicit rebuild before querying. Retrieval and generation
    setting changes will not require re-indexing. Document-scoped retrieval,

@@ -4,6 +4,11 @@ import hashlib
 from collections.abc import Iterable
 
 
+def fingerprint_document(data: bytes) -> str:
+    """Return the lowercase SHA-256 digest of the original document bytes."""
+    return hashlib.sha256(data).hexdigest()
+
+
 def make_id(text: str) -> int:
     """
     Generate a numeric ID from MD5 hash.

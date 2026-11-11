@@ -3,10 +3,39 @@
 import unittest
 from unittest.mock import patch
 
-from src.utils.id_utils import group_positions_by_id, make_id
+from src.models.index_models import IndexSettings
+from src.utils.id_utils import fingerprint_document, group_positions_by_id, make_id
 
 
 class IdUtilsTests(unittest.TestCase):
+    def test_document_fingerprint_matches_sha256(self) -> None:
+        self.assertEqual(
+            fingerprint_document(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        )
+        self.assertEqual(
+            fingerprint_document(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        )
+
+    def test_document_fingerprint_uses_original_bytes(self) -> None:
+        data = b"\x00\xff\r\n"
+
+        self.assertEqual(fingerprint_document(data), fingerprint_document(data))
+        self.assertNotEqual(fingerprint_document(data), fingerprint_document(b"\x00\xff\n"))
+
+    def test_document_fingerprint_is_accepted_by_index_settings(self) -> None:
+        fingerprint = fingerprint_document(b"example")
+
+        settings = IndexSettings(
+            document_fingerprint=fingerprint,
+            document_filename="example.txt",
+            embedding_provider="ollama",
+            embedding_model="nomic-embed-text",
+            max_chunk_chars=1000,
+        )
+        self.assertEqual(settings.document_fingerprint, fingerprint)
+
     def test_uses_first_64_bits_of_md5_digest(self) -> None:
         self.assertEqual(make_id("hello"), int("5d41402abc4b2a76", 16))
 
