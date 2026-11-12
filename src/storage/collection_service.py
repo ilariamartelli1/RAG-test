@@ -1,5 +1,7 @@
 """Create or check a Qdrant collection for chunk embeddings."""
 
+from typing import Literal
+
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from pydantic import ValidationError
@@ -26,24 +28,39 @@ class IndexSettingsMismatchError(ValueError):
         )
 
 
+class IndexSettingsMetadataError(ValueError):
+    """Report missing or invalid collection index settings metadata."""
+
+    def __init__(
+        self, collection_name: str, reason: Literal["missing", "invalid"], message: str
+    ) -> None:
+        self.collection_name = collection_name
+        self.reason = reason
+        super().__init__(message)
+
+
 def get_collection_index_settings(
     qdrant: QdrantClient, collection_name: str
 ) -> IndexSettings:
     """Read and validate index settings stored in a collection's metadata.
 
-    Missing or invalid settings raise ValueError. Qdrant errors propagate.
-    This does not check whether the settings match the current configuration
-    or whether indexing completed.
+    Missing or invalid settings raise IndexSettingsMetadataError. Qdrant errors
+    propagate. This does not check whether the settings match the current
+    configuration or whether indexing completed.
     """
     metadata = qdrant.get_collection(collection_name).config.metadata
     if metadata is None or INDEX_SETTINGS_METADATA_KEY not in metadata:
-        raise ValueError(f"Collection {collection_name!r} has no index settings metadata")
+        raise IndexSettingsMetadataError(
+            collection_name, "missing",
+            f"Collection {collection_name!r} has no index settings metadata",
+        )
 
     try:
         return IndexSettings.model_validate(metadata[INDEX_SETTINGS_METADATA_KEY])
     except ValidationError as exc:
-        raise ValueError(
-            f"Collection {collection_name!r} has invalid index settings metadata: {exc}"
+        raise IndexSettingsMetadataError(
+            collection_name, "invalid",
+            f"Collection {collection_name!r} has invalid index settings metadata: {exc}",
         ) from exc
 
 

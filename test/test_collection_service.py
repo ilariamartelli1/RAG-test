@@ -16,6 +16,7 @@ from qdrant_client.models import Distance, MultiVectorComparator, MultiVectorCon
 from src.models.index_models import IndexSettings
 from src.storage.collection_service import (
     INDEX_SETTINGS_METADATA_KEY,
+    IndexSettingsMetadataError,
     IndexSettingsMismatchError,
     compare_collection_index_settings,
     create_collection_with_settings,
@@ -148,10 +149,17 @@ class CollectionServiceTests(unittest.TestCase):
                 metadata=metadata,
             )
             with self.subTest(name=name), self.assertRaisesRegex(
-                ValueError, "index settings"
+                IndexSettingsMetadataError, "index settings"
             ) as raised:
                 ensure_collection_index_settings(qdrant, name, self.settings)
             self.assertNotIsInstance(raised.exception, IndexSettingsMismatchError)
+            self.assertIsInstance(raised.exception, ValueError)
+            self.assertEqual(raised.exception.collection_name, name)
+            self.assertEqual(raised.exception.reason, name)
+            if name == "invalid":
+                self.assertIsInstance(raised.exception.__cause__, ValueError)
+            else:
+                self.assertIsNone(raised.exception.__cause__)
             self.assertEqual(qdrant.get_collection(name).config.metadata, metadata)
 
         unavailable = MagicMock()
