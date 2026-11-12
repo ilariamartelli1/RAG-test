@@ -16,6 +16,7 @@ from qdrant_client.models import Distance, MultiVectorComparator, MultiVectorCon
 from src.models.index_models import IndexSettings
 from src.storage.collection_service import (
     INDEX_SETTINGS_METADATA_KEY,
+    IndexSettingsMismatchError,
     compare_collection_index_settings,
     create_collection_with_settings,
     ensure_collection,
@@ -123,10 +124,14 @@ class CollectionServiceTests(unittest.TestCase):
         }))
 
         with self.assertRaisesRegex(
-            ValueError, "documents.*embedding_model, max_chunk_chars.*explicitly rebuild"
-        ):
+            IndexSettingsMismatchError,
+            "documents.*embedding_model, max_chunk_chars.*explicitly rebuild",
+        ) as raised:
             ensure_collection_index_settings(qdrant, "documents", current)
 
+        self.assertIsInstance(raised.exception, ValueError)
+        self.assertEqual(raised.exception.collection_name, "documents")
+        self.assertEqual(raised.exception.differences, ("embedding_model", "max_chunk_chars"))
         self.assertEqual(get_collection_index_settings(qdrant, "documents"), self.settings)
         self.assertEqual(qdrant.count("documents").count, 1)
 
@@ -142,8 +147,11 @@ class CollectionServiceTests(unittest.TestCase):
                 vectors_config=VectorParams(size=3, distance=Distance.COSINE),
                 metadata=metadata,
             )
-            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "index settings"):
+            with self.subTest(name=name), self.assertRaisesRegex(
+                ValueError, "index settings"
+            ) as raised:
                 ensure_collection_index_settings(qdrant, name, self.settings)
+            self.assertNotIsInstance(raised.exception, IndexSettingsMismatchError)
             self.assertEqual(qdrant.get_collection(name).config.metadata, metadata)
 
         unavailable = MagicMock()

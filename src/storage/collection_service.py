@@ -13,6 +13,19 @@ else:
 INDEX_SETTINGS_METADATA_KEY = "index_settings"
 
 
+class IndexSettingsMismatchError(ValueError):
+    """Report which stored index settings differ from the current settings."""
+
+    def __init__(self, collection_name: str, differences: list[str]) -> None:
+        self.collection_name = collection_name
+        self.differences = tuple(differences)
+        super().__init__(
+            f"Collection {collection_name!r} has different index settings: "
+            f"{', '.join(self.differences)}. Use matching settings or a different "
+            "collection, or explicitly rebuild the index."
+        )
+
+
 def get_collection_index_settings(
     qdrant: QdrantClient, collection_name: str
 ) -> IndexSettings:
@@ -51,16 +64,13 @@ def ensure_collection_index_settings(
 ) -> None:
     """Reject differing settings without modifying the collection.
 
-    Missing or invalid settings and Qdrant errors propagate. This check does
-    not verify vector configuration, model weights, or indexing completion.
+    Differing settings raise IndexSettingsMismatchError. Missing or invalid
+    settings and Qdrant errors propagate. This check does not verify vector
+    configuration, model weights, or indexing completion.
     """
     differences = compare_collection_index_settings(qdrant, collection_name, current)
     if differences:
-        raise ValueError(
-            f"Collection {collection_name!r} has different index settings: "
-            f"{', '.join(differences)}. Use matching settings or a different "
-            "collection, or explicitly rebuild the index."
-        )
+        raise IndexSettingsMismatchError(collection_name, differences)
 
 
 def create_collection_with_settings(

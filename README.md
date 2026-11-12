@@ -125,8 +125,10 @@ complete application.
    settings in its metadata and read them back; this requires Qdrant collection
    metadata support. `compare_index_settings` reports which settings differ;
    `compare_collection_index_settings` reads stored settings before comparing
-   them. `ensure_collection_index_settings` raises an error when settings
-   differ. These helpers are not yet connected to ingestion or automatically
+   them. `ensure_collection_index_settings` raises an
+   `IndexSettingsMismatchError` when settings differ, identifying the
+   collection and fields for a future UI. These helpers are not yet connected
+   to ingestion or automatically
    enforced when reusing a collection. A match does not confirm vector
    configuration, unchanged model weights, or completed indexing.
    Changing document content, embedding model or chunking settings will
