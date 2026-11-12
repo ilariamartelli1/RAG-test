@@ -46,6 +46,23 @@ def compare_collection_index_settings(
     return compare_index_settings(saved, current)
 
 
+def ensure_collection_index_settings(
+    qdrant: QdrantClient, collection_name: str, current: IndexSettings
+) -> None:
+    """Reject differing settings without modifying the collection.
+
+    Missing or invalid settings and Qdrant errors propagate. This check does
+    not verify vector configuration, model weights, or indexing completion.
+    """
+    differences = compare_collection_index_settings(qdrant, collection_name, current)
+    if differences:
+        raise ValueError(
+            f"Collection {collection_name!r} has different index settings: "
+            f"{', '.join(differences)}. Use matching settings or a different "
+            "collection, or explicitly rebuild the index."
+        )
+
+
 def create_collection_with_settings(
     qdrant: QdrantClient,
     collection_name: str,
