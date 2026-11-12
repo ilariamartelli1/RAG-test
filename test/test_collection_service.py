@@ -16,6 +16,7 @@ from qdrant_client.models import Distance, MultiVectorComparator, MultiVectorCon
 from src.models.index_models import IndexSettings
 from src.storage.collection_service import (
     INDEX_SETTINGS_METADATA_KEY,
+    compare_collection_index_settings,
     create_collection_with_settings,
     ensure_collection,
     get_collection_index_settings,
@@ -53,6 +54,53 @@ class CollectionServiceTests(unittest.TestCase):
         create_collection_with_settings(qdrant, "documents", 3, self.settings)
 
         self.assertEqual(get_collection_index_settings(qdrant, "documents"), self.settings)
+
+    def test_compares_collection_index_settings_without_modification(self) -> None:
+        qdrant = QdrantClient(":memory:")
+        self.addCleanup(qdrant.close)
+        create_collection_with_settings(qdrant, "documents", 3, self.settings)
+        qdrant.upsert("documents", points=[
+            PointStruct(id=1, vector=[1.0, 0.0, 0.0], payload={"text": "keep"})
+        ])
+
+        self.assertEqual(compare_collection_index_settings(qdrant, "documents", self.settings), [])
+        current = IndexSettings(**(self.settings.model_dump() | {
+            "document_fingerprint": "b" * 64,
+            "embedding_model": "other-model",
+            "max_chunk_chars": 500,
+        }))
+        self.assertEqual(
+            compare_collection_index_settings(qdrant, "documents", current),
+            ["document_fingerprint", "embedding_model", "max_chunk_chars"],
+        )
+        self.assertEqual(get_collection_index_settings(qdrant, "documents"), self.settings)
+        self.assertEqual(qdrant.count("documents").count, 1)
+
+    def test_comparison_propagates_missing_and_invalid_settings(self) -> None:
+        qdrant = QdrantClient(":memory:")
+        self.addCleanup(qdrant.close)
+        for name, metadata in (
+            ("missing", None),
+            ("invalid", {INDEX_SETTINGS_METADATA_KEY: {}}),
+        ):
+            qdrant.create_collection(
+                name,
+                vectors_config=VectorParams(size=3, distance=Distance.COSINE),
+                metadata=metadata,
+            )
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "index settings"):
+                compare_collection_index_settings(qdrant, name, self.settings)
+            self.assertEqual(qdrant.get_collection(name).config.metadata, metadata)
+
+    def test_comparison_propagates_qdrant_errors(self) -> None:
+        qdrant = MagicMock()
+        qdrant.get_collection.side_effect = RuntimeError("unavailable")
+
+        with self.assertRaisesRegex(RuntimeError, "unavailable"):
+            compare_collection_index_settings(qdrant, "documents", self.settings)
+        qdrant.create_collection.assert_not_called()
+        qdrant.update_collection.assert_not_called()
+        qdrant.delete_collection.assert_not_called()
 
     def test_missing_index_settings_are_rejected_without_modification(self) -> None:
         for metadata in (None, {}, {"other": "keep"}):

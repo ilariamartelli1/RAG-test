@@ -5,9 +5,9 @@ from qdrant_client.models import Distance, VectorParams
 from pydantic import ValidationError
 
 if "." in __package__:
-    from ..models.index_models import IndexSettings
+    from ..models.index_models import IndexSettings, compare_index_settings
 else:
-    from models.index_models import IndexSettings
+    from models.index_models import IndexSettings, compare_index_settings
 
 
 INDEX_SETTINGS_METADATA_KEY = "index_settings"
@@ -32,6 +32,18 @@ def get_collection_index_settings(
         raise ValueError(
             f"Collection {collection_name!r} has invalid index settings metadata: {exc}"
         ) from exc
+
+
+def compare_collection_index_settings(
+    qdrant: QdrantClient, collection_name: str, current: IndexSettings
+) -> list[str]:
+    """Return field names differing from the collection's stored settings.
+
+    Missing or invalid settings and Qdrant errors propagate. A match does not
+    verify vector configuration, model weights, or indexing completion.
+    """
+    saved = get_collection_index_settings(qdrant, collection_name)
+    return compare_index_settings(saved, current)
 
 
 def create_collection_with_settings(
