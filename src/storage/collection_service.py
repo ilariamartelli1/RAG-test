@@ -13,6 +13,7 @@ else:
 
 
 INDEX_SETTINGS_METADATA_KEY = "index_settings"
+INDEX_STATUS_METADATA_KEY = "index_status"
 
 
 class IndexSettingsMismatchError(ValueError):
@@ -96,7 +97,7 @@ def create_collection_with_settings(
     embedding_dimension: int,
     settings: IndexSettings,
 ) -> None:
-    """Create a new cosine collection and store its index settings in metadata.
+    """Create a new cosine collection with settings and a building status.
 
     Existing collections are not modified. Qdrant errors propagate. If creation
     succeeds but metadata cannot be verified, the new collection is left in
@@ -105,7 +106,10 @@ def create_collection_with_settings(
     if embedding_dimension <= 0:
         raise ValueError("embedding_dimension must be greater than zero")
 
-    metadata = {INDEX_SETTINGS_METADATA_KEY: settings.model_dump()}
+    metadata = {
+        INDEX_SETTINGS_METADATA_KEY: settings.model_dump(),
+        INDEX_STATUS_METADATA_KEY: "building",
+    }
     created = qdrant.create_collection(
         collection_name=collection_name,
         vectors_config=VectorParams(
@@ -118,12 +122,12 @@ def create_collection_with_settings(
         raise RuntimeError(f"Qdrant did not create collection {collection_name!r}")
 
     stored_metadata = qdrant.get_collection(collection_name).config.metadata
-    if not stored_metadata or stored_metadata.get(INDEX_SETTINGS_METADATA_KEY) != metadata[
-        INDEX_SETTINGS_METADATA_KEY
-    ]:
+    if not stored_metadata or any(
+        stored_metadata.get(key) != value for key, value in metadata.items()
+    ):
         raise RuntimeError(
-            f"Collection {collection_name!r} was created but its index settings "
-            "metadata could not be verified"
+            f"Collection {collection_name!r} was created but its index settings or "
+            "status metadata could not be verified"
         )
 
 

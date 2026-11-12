@@ -16,6 +16,7 @@ from qdrant_client.models import Distance, MultiVectorComparator, MultiVectorCon
 from src.models.index_models import IndexSettings
 from src.storage.collection_service import (
     INDEX_SETTINGS_METADATA_KEY,
+    INDEX_STATUS_METADATA_KEY,
     IndexSettingsMetadataError,
     IndexSettingsMismatchError,
     compare_collection_index_settings,
@@ -49,6 +50,7 @@ class CollectionServiceTests(unittest.TestCase):
                     collection.config.metadata[INDEX_SETTINGS_METADATA_KEY],
                     self.settings.model_dump(),
                 )
+                self.assertEqual(collection.config.metadata[INDEX_STATUS_METADATA_KEY], "building")
                 self.assertEqual(get_collection_index_settings(qdrant, "documents"), self.settings)
 
     def test_reads_collection_index_settings(self) -> None:
@@ -257,7 +259,16 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.get_collection.assert_not_called()
 
         qdrant.create_collection.return_value = True
-        for metadata in (None, {}, {INDEX_SETTINGS_METADATA_KEY: {"wrong": "settings"}}):
+        for metadata in (
+            None,
+            {},
+            {INDEX_SETTINGS_METADATA_KEY: {"wrong": "settings"}},
+            {INDEX_SETTINGS_METADATA_KEY: self.settings.model_dump()},
+            {
+                INDEX_SETTINGS_METADATA_KEY: self.settings.model_dump(),
+                INDEX_STATUS_METADATA_KEY: "ready",
+            },
+        ):
             qdrant.get_collection.return_value.config.metadata = metadata
             with self.subTest(metadata=metadata), self.assertRaisesRegex(
                 RuntimeError, "metadata could not be verified"

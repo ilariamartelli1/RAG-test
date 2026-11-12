@@ -122,8 +122,11 @@ complete application.
    a helper to fingerprint the original document bytes, and
    `build_index_settings` combines it with the other settings.
    `storage/collection_service.py` can create a new collection with those
-   settings in its metadata and read them back; this requires Qdrant collection
-   metadata support. `compare_index_settings` reports which settings differ;
+   settings and an initial `building` status in its metadata and read settings
+   back; this requires Qdrant collection metadata support. There is not yet a
+   way to mark the index ready or enforce the status. Collections created
+   before the status was added may not have it.
+   `compare_index_settings` reports which settings differ;
    `compare_collection_index_settings` reads stored settings before comparing
    them. `ensure_collection_index_settings` raises an
    `IndexSettingsMismatchError` when settings differ, identifying the
