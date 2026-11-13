@@ -23,7 +23,10 @@ from src.storage.collection_service import (
     create_collection_with_settings,
     ensure_collection,
     ensure_collection_index_settings,
+    ensure_collection_index_ready,
     get_collection_index_settings,
+    get_collection_index_status,
+    mark_collection_index_ready,
 )
 
 
@@ -59,6 +62,106 @@ class CollectionServiceTests(unittest.TestCase):
         create_collection_with_settings(qdrant, "documents", 3, self.settings)
 
         self.assertEqual(get_collection_index_settings(qdrant, "documents"), self.settings)
+
+    def test_index_status_transition_preserves_metadata_and_points(self) -> None:
+        with TemporaryDirectory() as path:
+            with closing(QdrantClient(path=path)) as qdrant:
+                create_collection_with_settings(qdrant, "documents", 3, self.settings)
+                qdrant.update_collection("documents", metadata={"other": "keep"})
+                qdrant.upsert("documents", points=[
+                    PointStruct(id=1, vector=[1.0, 0.0, 0.0], payload={"text": "keep"})
+                ])
+                self.assertEqual(get_collection_index_status(qdrant, "documents"), "building")
+                with self.assertRaisesRegex(ValueError, "still building"):
+                    ensure_collection_index_ready(qdrant, "documents")
+                mark_collection_index_ready(qdrant, "documents", self.settings)
+
+            with closing(QdrantClient(path=path)) as qdrant:
+                self.assertEqual(get_collection_index_status(qdrant, "documents"), "ready")
+                self.assertIsNone(ensure_collection_index_ready(qdrant, "documents"))
+                self.assertEqual(get_collection_index_settings(qdrant, "documents"), self.settings)
+                self.assertEqual(qdrant.get_collection("documents").config.metadata["other"], "keep")
+                self.assertEqual(qdrant.count("documents").count, 1)
+                with self.assertRaisesRegex(ValueError, "not building"):
+                    mark_collection_index_ready(qdrant, "documents", self.settings)
+
+    def test_missing_and_invalid_index_status_are_rejected(self) -> None:
+        qdrant = QdrantClient(":memory:")
+        self.addCleanup(qdrant.close)
+        for name, metadata in (
+            ("no_metadata", None),
+            ("missing", {INDEX_SETTINGS_METADATA_KEY: self.settings.model_dump()}),
+            ("invalid", {
+                INDEX_SETTINGS_METADATA_KEY: self.settings.model_dump(),
+                INDEX_STATUS_METADATA_KEY: "unknown",
+            }),
+            ("null", {
+                INDEX_SETTINGS_METADATA_KEY: self.settings.model_dump(),
+                INDEX_STATUS_METADATA_KEY: None,
+            }),
+        ):
+            qdrant.create_collection(
+                name,
+                vectors_config=VectorParams(size=3, distance=Distance.COSINE),
+                metadata=metadata,
+            )
+            for operation in (get_collection_index_status, ensure_collection_index_ready):
+                with self.subTest(name=name, operation=operation.__name__), self.assertRaises(ValueError):
+                    operation(qdrant, name)
+            if metadata is not None:
+                with self.subTest(name=name, operation="mark"), self.assertRaises(ValueError):
+                    mark_collection_index_ready(qdrant, name, self.settings)
+            self.assertEqual(qdrant.get_collection(name).config.metadata, metadata)
+
+    def test_mark_ready_rejects_mismatched_or_missing_settings(self) -> None:
+        qdrant = QdrantClient(":memory:")
+        self.addCleanup(qdrant.close)
+        create_collection_with_settings(qdrant, "documents", 3, self.settings)
+        current = IndexSettings(**(self.settings.model_dump() | {"embedding_model": "other"}))
+        with self.assertRaises(IndexSettingsMismatchError):
+            mark_collection_index_ready(qdrant, "documents", current)
+        self.assertEqual(get_collection_index_status(qdrant, "documents"), "building")
+
+        qdrant.create_collection(
+            "legacy",
+            vectors_config=VectorParams(size=3, distance=Distance.COSINE),
+            metadata={INDEX_STATUS_METADATA_KEY: "building"},
+        )
+        with self.assertRaises(IndexSettingsMetadataError):
+            mark_collection_index_ready(qdrant, "legacy", self.settings)
+        self.assertEqual(get_collection_index_status(qdrant, "legacy"), "building")
+
+    def test_mark_ready_reports_update_and_verification_failures(self) -> None:
+        qdrant = MagicMock()
+        qdrant.get_collection.return_value.config.metadata = {
+            INDEX_SETTINGS_METADATA_KEY: self.settings.model_dump(),
+            INDEX_STATUS_METADATA_KEY: "building",
+        }
+        qdrant.update_collection.side_effect = RuntimeError("unavailable")
+        with self.assertRaisesRegex(RuntimeError, "unavailable"):
+            mark_collection_index_ready(qdrant, "documents", self.settings)
+
+        qdrant.update_collection.side_effect = None
+        qdrant.update_collection.return_value = False
+        with self.assertRaisesRegex(RuntimeError, "did not confirm"):
+            mark_collection_index_ready(qdrant, "documents", self.settings)
+
+        qdrant.update_collection.return_value = True
+        with self.assertRaisesRegex(RuntimeError, "could not be verified"):
+            mark_collection_index_ready(qdrant, "documents", self.settings)
+
+        collection = qdrant.get_collection.return_value
+        qdrant.get_collection.side_effect = [collection, collection, RuntimeError("read failed")]
+        with self.assertRaisesRegex(RuntimeError, "read failed"):
+            mark_collection_index_ready(qdrant, "documents", self.settings)
+        qdrant.delete_collection.assert_not_called()
+
+    def test_index_status_lookup_errors_propagate(self) -> None:
+        qdrant = MagicMock()
+        qdrant.get_collection.side_effect = RuntimeError("unavailable")
+        with self.assertRaisesRegex(RuntimeError, "unavailable"):
+            get_collection_index_status(qdrant, "documents")
+        qdrant.update_collection.assert_not_called()
 
     def test_compares_collection_index_settings_without_modification(self) -> None:
         qdrant = QdrantClient(":memory:")

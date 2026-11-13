@@ -1,6 +1,6 @@
 """Create or check a Qdrant collection for chunk embeddings."""
 
-from typing import Literal
+from typing import Literal, get_args
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
@@ -14,6 +14,7 @@ else:
 
 INDEX_SETTINGS_METADATA_KEY = "index_settings"
 INDEX_STATUS_METADATA_KEY = "index_status"
+IndexStatus = Literal["building", "ready"]
 
 
 class IndexSettingsMismatchError(ValueError):
@@ -89,6 +90,44 @@ def ensure_collection_index_settings(
     differences = compare_collection_index_settings(qdrant, collection_name, current)
     if differences:
         raise IndexSettingsMismatchError(collection_name, differences)
+
+
+def get_collection_index_status(qdrant: QdrantClient, collection_name: str) -> IndexStatus:
+    """Return the index status; reject absent or unrecognized status metadata."""
+    metadata = qdrant.get_collection(collection_name).config.metadata
+    if metadata is None or INDEX_STATUS_METADATA_KEY not in metadata:
+        raise ValueError(f"Collection {collection_name!r} has no index status metadata")
+    status = metadata[INDEX_STATUS_METADATA_KEY]
+    if status not in get_args(IndexStatus):
+        raise ValueError(f"Collection {collection_name!r} has invalid index status metadata: {status!r}")
+    return status
+
+
+def ensure_collection_index_ready(qdrant: QdrantClient, collection_name: str) -> None:
+    """Reject collections whose valid status is not ready."""
+    if get_collection_index_status(qdrant, collection_name) != "ready":
+        raise ValueError(f"Collection {collection_name!r} is still building its index")
+
+
+def mark_collection_index_ready(
+    qdrant: QdrantClient, collection_name: str, settings: IndexSettings
+) -> None:
+    """Mark a building index ready after the caller has completed all writes.
+
+    The caller must exclusively own the indexing operation and only call this
+    after successful ingestion. Status and settings checks are not atomic.
+    If the update or verification fails, the resulting status may be unknown.
+    """
+    ensure_collection_index_settings(qdrant, collection_name, settings)
+    if get_collection_index_status(qdrant, collection_name) != "building":
+        raise ValueError(f"Collection {collection_name!r} index is not building")
+    updated = qdrant.update_collection(
+        collection_name=collection_name, metadata={INDEX_STATUS_METADATA_KEY: "ready"}
+    )
+    if not updated:
+        raise RuntimeError(f"Qdrant did not confirm the index status update for {collection_name!r}")
+    if get_collection_index_status(qdrant, collection_name) != "ready":
+        raise RuntimeError(f"Collection {collection_name!r} index status update could not be verified")
 
 
 def create_collection_with_settings(

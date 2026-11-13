@@ -123,9 +123,11 @@ complete application.
    `build_index_settings` combines it with the other settings.
    `storage/collection_service.py` can create a new collection with those
    settings and an initial `building` status in its metadata and read settings
-   back; this requires Qdrant collection metadata support. There is not yet a
-   way to mark the index ready or enforce the status. Collections created
-   before the status was added may not have it.
+   back; this requires Qdrant collection metadata support. Helpers can read
+   the status, reject indexes that are not ready, and mark a building index
+   ready after the caller completes ingestion. These helpers are not yet
+   connected to ingestion or retrieval. Collections created before the status
+   was added may not have it and are not treated as ready.
    `compare_index_settings` reports which settings differ;
    `compare_collection_index_settings` reads stored settings before comparing
    them. `ensure_collection_index_settings` raises an
@@ -133,8 +135,10 @@ complete application.
    collection and fields for a future UI. Missing or invalid metadata raises
    `IndexSettingsMetadataError`, identifying the collection and reason.
    These helpers are not yet connected to ingestion or automatically enforced
-   when reusing a collection. A match does not confirm vector
-   configuration, unchanged model weights, or completed indexing.
+   when reusing a collection. A settings match does not confirm vector
+   configuration, unchanged model weights, or completed indexing. Marking an
+   index ready relies on the caller completing all writes successfully; status
+   transitions are not atomic and require exclusive indexing ownership.
    Changing document content, embedding model or chunking settings will
    require an explicit rebuild before querying. Retrieval and generation
    setting changes will not require re-indexing. Document-scoped retrieval,
