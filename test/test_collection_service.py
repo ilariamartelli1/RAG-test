@@ -24,6 +24,7 @@ from src.storage.collection_service import (
     ensure_collection,
     ensure_collection_index_settings,
     ensure_collection_index_ready,
+    ensure_document_index_compatible,
     get_collection_index_settings,
     get_collection_index_status,
     mark_collection_index_ready,
@@ -216,6 +217,61 @@ class CollectionServiceTests(unittest.TestCase):
         create_collection_with_settings(qdrant, "documents", 3, self.settings)
 
         self.assertIsNone(ensure_collection_index_settings(qdrant, "documents", self.settings))
+
+    def test_document_compatibility_checks_ready_settings_and_vectors(self) -> None:
+        qdrant = QdrantClient(":memory:")
+        self.addCleanup(qdrant.close)
+        create_collection_with_settings(qdrant, "documents", 3, self.settings)
+        qdrant.upsert("documents", points=[
+            PointStruct(id=1, vector=[1.0, 0.0, 0.0], payload={"text": "keep"})
+        ])
+        with self.assertRaisesRegex(ValueError, "still building"):
+            ensure_document_index_compatible(qdrant, "documents", 3, self.settings)
+
+        mark_collection_index_ready(qdrant, "documents", self.settings)
+        self.assertIsNone(ensure_document_index_compatible(qdrant, "documents", 3, self.settings))
+        changed = IndexSettings(**(self.settings.model_dump() | {"embedding_model": "other"}))
+        with self.assertRaises(IndexSettingsMismatchError):
+            ensure_document_index_compatible(qdrant, "documents", 3, changed)
+        with self.assertRaisesRegex(ValueError, "expected size 4"):
+            ensure_document_index_compatible(qdrant, "documents", 4, self.settings)
+
+        self.assertEqual(qdrant.count("documents").count, 1)
+        self.assertEqual(get_collection_index_settings(qdrant, "documents"), self.settings)
+        self.assertEqual(get_collection_index_status(qdrant, "documents"), "ready")
+
+    def test_document_compatibility_rejects_missing_or_incompatible_collections(self) -> None:
+        qdrant = QdrantClient(":memory:")
+        self.addCleanup(qdrant.close)
+        for name, metadata, vectors in (
+            ("missing_status", {INDEX_SETTINGS_METADATA_KEY: self.settings.model_dump()},
+             VectorParams(size=3, distance=Distance.COSINE)),
+            ("missing_settings", {INDEX_STATUS_METADATA_KEY: "ready"},
+             VectorParams(size=3, distance=Distance.COSINE)),
+            ("dot", {INDEX_STATUS_METADATA_KEY: "ready",
+                     INDEX_SETTINGS_METADATA_KEY: self.settings.model_dump()},
+             VectorParams(size=3, distance=Distance.DOT)),
+            ("named", {INDEX_STATUS_METADATA_KEY: "ready",
+                       INDEX_SETTINGS_METADATA_KEY: self.settings.model_dump()},
+             {"text": VectorParams(size=3, distance=Distance.COSINE)}),
+        ):
+            qdrant.create_collection(name, vectors_config=vectors, metadata=metadata)
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                ensure_document_index_compatible(qdrant, name, 3, self.settings)
+            self.assertEqual(qdrant.get_collection(name).config.metadata, metadata)
+
+        with self.assertRaises(ValueError):
+            ensure_document_index_compatible(qdrant, "absent", 3, self.settings)
+        self.assertFalse(qdrant.collection_exists("absent"))
+
+    def test_document_compatibility_propagates_lookup_errors(self) -> None:
+        qdrant = MagicMock()
+        qdrant.get_collection.side_effect = RuntimeError("unavailable")
+        with self.assertRaisesRegex(RuntimeError, "unavailable"):
+            ensure_document_index_compatible(qdrant, "documents", 3, self.settings)
+        qdrant.create_collection.assert_not_called()
+        qdrant.update_collection.assert_not_called()
+        qdrant.delete_collection.assert_not_called()
 
     def test_settings_check_rejects_differences_without_modifying_collection(self) -> None:
         qdrant = QdrantClient(":memory:")

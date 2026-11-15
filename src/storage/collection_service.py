@@ -167,6 +167,43 @@ def create_collection_with_settings(
         )
 
 
+def ensure_collection_vector_config(
+    qdrant: QdrantClient, collection_name: str, embedding_dimension: int
+) -> None:
+    """Validate an existing collection's unnamed cosine vector without modifying it."""
+    if embedding_dimension <= 0:
+        raise ValueError("embedding_dimension must be greater than zero")
+    vectors = qdrant.get_collection(collection_name).config.params.vectors
+    if not isinstance(vectors, VectorParams) or vectors.multivector_config is not None:
+        raise ValueError(
+            f"Collection {collection_name!r} must use a single unnamed dense vector"
+        )
+    if vectors.size != embedding_dimension or vectors.distance != Distance.COSINE:
+        raise ValueError(
+            f"Collection {collection_name!r} has vector size {vectors.size} and "
+            f"distance {vectors.distance.value}; expected size {embedding_dimension} "
+            f"and distance {Distance.COSINE.value}"
+        )
+
+
+def ensure_document_index_compatible(
+    qdrant: QdrantClient,
+    collection_name: str,
+    embedding_dimension: int,
+    settings: IndexSettings,
+) -> None:
+    """Check readiness, index settings and vector configuration without writing.
+
+    The caller must ensure the collection is not modified concurrently, and
+    that settings describe the actual embedding provider and model.
+    """
+    if embedding_dimension <= 0:
+        raise ValueError("embedding_dimension must be greater than zero")
+    ensure_collection_index_ready(qdrant, collection_name)
+    ensure_collection_index_settings(qdrant, collection_name, settings)
+    ensure_collection_vector_config(qdrant, collection_name, embedding_dimension)
+
+
 def ensure_collection(
     qdrant: QdrantClient, collection_name: str, embedding_dimension: int
 ) -> bool:
@@ -192,17 +229,7 @@ def ensure_collection(
         raise ValueError("embedding_dimension must be greater than zero")
 
     if qdrant.collection_exists(collection_name):
-        vectors = qdrant.get_collection(collection_name).config.params.vectors
-        if not isinstance(vectors, VectorParams) or vectors.multivector_config is not None:
-            raise ValueError(
-                f"Collection {collection_name!r} must use a single unnamed dense vector"
-            )
-        if vectors.size != embedding_dimension or vectors.distance != Distance.COSINE:
-            raise ValueError(
-                f"Collection {collection_name!r} has vector size {vectors.size} and "
-                f"distance {vectors.distance.value}; expected size {embedding_dimension} "
-                f"and distance {Distance.COSINE.value}"
-            )
+        ensure_collection_vector_config(qdrant, collection_name, embedding_dimension)
         return False
 
     qdrant.create_collection(
