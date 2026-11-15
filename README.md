@@ -135,32 +135,32 @@ complete application.
    settings and an initial `building` status in its metadata and read settings
    back; this requires Qdrant collection metadata support. Helpers can read
    the status, reject indexes that are not ready, and mark a building index
-   ready after the caller completes ingestion. The new document indexing flow
-   uses them, but retrieval does not yet enforce readiness. Collections created
-   before the status was added may not have it and are not treated as ready
-   by the readiness helper.
+   ready after the caller completes ingestion. Collections created before the
+   status was added may not have it and are not treated as ready.
    `compare_index_settings` reports which settings differ;
    `compare_collection_index_settings` reads stored settings before comparing
    them. `ensure_collection_index_settings` raises an
    `IndexSettingsMismatchError` when settings differ, identifying the
    collection and fields for a future UI. Missing or invalid metadata raises
    `IndexSettingsMetadataError`, identifying the collection and reason.
-   The new indexing flow checks settings before marking an index ready, but
-   settings checks are not yet enforced when reusing a collection. A match does not confirm vector
-   configuration, unchanged model weights, or completed indexing. Marking an
-   index ready relies on the caller completing all writes successfully; status
-   transitions are not atomic and require exclusive indexing ownership.
+   `ensure_document_index_compatible` checks readiness, settings and vector
+   configuration without changing a collection. `retrieve_document_chunks`
+   uses those checks before searching; the older `retrieve_chunks` and
+   `rag/rag_service.py` do not yet use them. The caller must supply settings
+   matching the actual embedder and prevent concurrent collection changes:
+   checks are not atomic, and a model name alone does not detect changed model
+   weights. Marking an index ready relies on completing all writes successfully.
    Changing document content, embedding model or chunking settings will
    require an explicit rebuild before querying. Retrieval and generation
-   setting changes will not require re-indexing. Document-scoped retrieval,
-   model and indexing-setting compatibility checks and staged indexing are
-   not yet implemented. A model name alone does not detect changed model weights.
+   setting changes will not require re-indexing. Safe rebuild and integration
+   of compatibility checks into the complete application are still planned.
 
 7. **Ask a question.** The planned UI will submit the question to
    `rag/rag_service.py`. The question is embedded using the index's embedding
    model, and `storage/chunk_service.py` searches Qdrant for relevant chunks.
-   The target is to restrict results to the active document; this scoping is
-   still planned.
+   The checked document retrieval helper expects a collection dedicated to
+   that document; it does not filter points within a shared collection. The
+   planned application must select and protect the correct collection.
 
 8. **Generate and display the answer.** `rag/prompt_utils.py` builds a prompt
    from the question and retrieved text. `providers/ollama_provider.py`,

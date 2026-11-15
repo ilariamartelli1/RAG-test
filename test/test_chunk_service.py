@@ -1,16 +1,19 @@
 """Tests for Qdrant chunk storage and retrieval."""
 
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, UpdateStatus, VectorParams
 
-from src.storage.chunk_service import retrieve_chunks, store_chunks
+from src.storage.chunk_service import retrieve_chunks, retrieve_document_chunks, store_chunks
 from src.chunkers.dataset_chunker import chunk_dataset_row
+from src.ingestion.document_indexing import build_document_index
 from src.models.chunk_models import ChunkPayload
+from src.models.index_models import build_index_settings
 from src.rag.prompt_utils import build_rag_prompt
+from src.storage.collection_service import create_collection_with_settings
 
 
 class ChunkServiceTests(unittest.TestCase):
@@ -160,6 +163,65 @@ class ChunkServiceTests(unittest.TestCase):
             ["Matching", "Above threshold", "Below threshold"],
         )
         self.assertEqual(no_results, [])
+
+    def test_document_retrieval_checks_readiness_settings_and_dimension(self) -> None:
+        self.embedder.embed_query.return_value = [1.0, 0.0]
+        self.embedder.embed_documents.side_effect = lambda texts, batch_size: [
+            [1.0, 0.0] for _ in texts
+        ]
+        settings = build_index_settings(
+            document_bytes=b"document content", document_filename="doc.txt",
+            embedding_provider="fake", embedding_model="model", max_chunk_chars=100,
+        )
+        build_document_index(
+            qdrant=self.qdrant, collection_name="document", data=b"document content",
+            filename="doc.txt", embedder=self.embedder, embedding_provider="fake",
+            embedding_model="model", embedding_batch_size=2, chunk_batch_size=2,
+            max_chunk_chars=100,
+        )
+        with patch.object(self.qdrant, "query_points", wraps=self.qdrant.query_points) as query:
+            results = retrieve_document_chunks(self.qdrant, self.embedder, "document", settings, "ask", 2)
+            self.assertEqual(results[0][0].text, "document content")
+            self.assertEqual(results[0][0].metadata["source"], "doc.txt")
+            self.assertEqual(query.call_count, 1)
+
+            changed = build_index_settings(
+                document_bytes=b"document content", document_filename="doc.txt",
+                embedding_provider="fake", embedding_model="other", max_chunk_chars=100,
+            )
+            with self.assertRaisesRegex(ValueError, "embedding_model"):
+                retrieve_document_chunks(self.qdrant, self.embedder, "document", changed, "ask", 2)
+            self.embedder.embed_query.return_value = [1.0, 0.0, 0.0]
+            with self.assertRaisesRegex(ValueError, "expected size 3"):
+                retrieve_document_chunks(self.qdrant, self.embedder, "document", settings, "ask", 2)
+            self.assertEqual(query.call_count, 1)
+
+    def test_document_retrieval_does_not_query_incomplete_or_legacy_collection(self) -> None:
+        self.embedder.embed_query.return_value = [1.0, 0.0]
+        settings = build_index_settings(
+            document_bytes=b"document", document_filename="doc.txt",
+            embedding_provider="fake", embedding_model="model", max_chunk_chars=100,
+        )
+        create_collection_with_settings(self.qdrant, "building", 2, settings)
+        with patch.object(self.qdrant, "query_points", wraps=self.qdrant.query_points) as query:
+            for name in ("building", "test_chunks", "absent"):
+                with self.subTest(name=name), self.assertRaises(ValueError):
+                    retrieve_document_chunks(self.qdrant, self.embedder, name, settings, "ask", 2)
+            query.assert_not_called()
+        self.assertFalse(self.qdrant.collection_exists("absent"))
+
+    def test_document_retrieval_rejects_empty_vectors_and_invalid_batch_size(self) -> None:
+        settings = build_index_settings(
+            document_bytes=b"document", document_filename="doc.txt",
+            embedding_provider="fake", embedding_model="model", max_chunk_chars=100,
+        )
+        self.embedder.embed_query.return_value = []
+        with self.assertRaisesRegex(ValueError, "empty vector"):
+            retrieve_document_chunks(self.qdrant, self.embedder, "test_chunks", settings, "ask", 2)
+        self.embedder.embed_query.reset_mock()
+        with self.assertRaisesRegex(ValueError, "batch_size"):
+            retrieve_document_chunks(self.qdrant, self.embedder, "test_chunks", settings, "ask", 0)
+        self.embedder.embed_query.assert_not_called()
 
 
 if __name__ == "__main__":

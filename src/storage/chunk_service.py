@@ -9,6 +9,8 @@ from qdrant_client.models import PointStruct, UpdateStatus
 from src.utils.id_utils import make_id
 from src.models.chunk_models import ChunkPayload
 from src.embeddings.embedding_provider import EmbeddingProvider
+from src.models.index_models import IndexSettings
+from src.storage.collection_service import ensure_document_index_compatible
 
 
 def store_chunks(
@@ -89,6 +91,40 @@ def retrieve_chunks(
         list[tuple[ChunkPayload, float]]: Chunks and their similarity scores.
     """
     query_vector = embedder.embed_query(query, embedding_batch_size)
+    return _query_chunks(qdrant, collection, query_vector, top_n, score_threshold)
+
+
+def retrieve_document_chunks(
+    qdrant: QdrantClient,
+    embedder: EmbeddingProvider,
+    collection: str,
+    settings: IndexSettings,
+    query: str,
+    embedding_batch_size: int,
+    top_n: int = 5,
+    score_threshold: float = 0.2,
+) -> list[tuple[ChunkPayload, float]]:
+    """Retrieve from a ready, compatible document collection.
+
+    The caller must supply settings matching the actual embedder and prevent
+    concurrent collection changes; the compatibility checks are not atomic.
+    """
+    if embedding_batch_size <= 0:
+        raise ValueError("embedding_batch_size must be greater than zero")
+    query_vector = embedder.embed_query(query, embedding_batch_size)
+    if not query_vector:
+        raise ValueError("Embedding provider returned an empty vector")
+    ensure_document_index_compatible(qdrant, collection, len(query_vector), settings)
+    return _query_chunks(qdrant, collection, query_vector, top_n, score_threshold)
+
+
+def _query_chunks(
+    qdrant: QdrantClient,
+    collection: str,
+    query_vector: list[float],
+    top_n: int,
+    score_threshold: float,
+) -> list[tuple[ChunkPayload, float]]:
     results = qdrant.query_points(
         collection_name=collection,
         query=query_vector,
