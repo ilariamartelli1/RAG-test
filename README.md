@@ -101,9 +101,14 @@ complete application.
 
 5. **Embed and index.** `ingestion/document_ingestion.py` connects the
    document loader and chunker to `ingestion/ingestion_service.py`, which
-   sends chunks to a storage callback in batches. `storage/chunk_service.py`
-   embeds and stores chunks in Qdrant; `utils/id_utils.py` derives identifiers
-   from chunk payloads. `storage/collection_service.py` creates a collection
+   sends chunks to a storage callback in batches. `ingestion/document_indexing.py`
+   can build a new collection, ingest the document and mark it ready after
+   completed writes. It leaves an incomplete collection in place if ingestion
+   fails, and does not reuse an existing collection. The caller must provide
+   the actual embedding provider and model identity.
+   `storage/chunk_service.py` embeds and stores chunks in Qdrant, waiting for
+   writes to complete; `utils/id_utils.py` derives identifiers from chunk
+   payloads. `storage/collection_service.py` creates a collection
    or checks that an existing collection uses an unnamed vector with the
    requested dimension and cosine distance.
    `embeddings/embedding_provider.py` defines an embedding interface, and
@@ -125,17 +130,18 @@ complete application.
    settings and an initial `building` status in its metadata and read settings
    back; this requires Qdrant collection metadata support. Helpers can read
    the status, reject indexes that are not ready, and mark a building index
-   ready after the caller completes ingestion. These helpers are not yet
-   connected to ingestion or retrieval. Collections created before the status
-   was added may not have it and are not treated as ready.
+   ready after the caller completes ingestion. The new document indexing flow
+   uses them, but retrieval does not yet enforce readiness. Collections created
+   before the status was added may not have it and are not treated as ready
+   by the readiness helper.
    `compare_index_settings` reports which settings differ;
    `compare_collection_index_settings` reads stored settings before comparing
    them. `ensure_collection_index_settings` raises an
    `IndexSettingsMismatchError` when settings differ, identifying the
    collection and fields for a future UI. Missing or invalid metadata raises
    `IndexSettingsMetadataError`, identifying the collection and reason.
-   These helpers are not yet connected to ingestion or automatically enforced
-   when reusing a collection. A settings match does not confirm vector
+   The new indexing flow checks settings before marking an index ready, but
+   settings checks are not yet enforced when reusing a collection. A match does not confirm vector
    configuration, unchanged model weights, or completed indexing. Marking an
    index ready relies on the caller completing all writes successfully; status
    transitions are not atomic and require exclusive indexing ownership.
