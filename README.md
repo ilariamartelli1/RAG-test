@@ -10,6 +10,11 @@ but the web UI, document-scoped retrieval and parts of the workflow are still
 planned. An Ollama embedding adapter exists but is not yet selected by the
 application.
 
+The existing dataset example can be run from the repository root with
+`python -m src.main`. It uses Anthropic and SentenceTransformers, accesses the
+dataset, and may start Qdrant via Docker Compose. Direct execution with
+`python src/main.py` is not supported.
+
 ## Architecture
 
 ```text

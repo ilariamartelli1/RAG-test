@@ -6,14 +6,9 @@ import json
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, UpdateStatus
 
-if "." in __package__:
-    from ..utils.id_utils import make_id
-    from ..models.chunk_models import ChunkPayload
-    from ..embeddings.embedding_provider import EmbeddingProvider
-else:
-    from utils.id_utils import make_id
-    from models.chunk_models import ChunkPayload
-    from embeddings.embedding_provider import EmbeddingProvider
+from src.utils.id_utils import make_id
+from src.models.chunk_models import ChunkPayload
+from src.embeddings.embedding_provider import EmbeddingProvider
 
 
 def store_chunks(

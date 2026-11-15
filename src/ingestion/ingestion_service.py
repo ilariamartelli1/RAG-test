@@ -2,12 +2,8 @@
 
 from collections.abc import Callable, Iterable
 
-if "." in __package__:
-    from ..models.chunk_models import ChunkPayload
-    from ..models.record_models import SourceRecord
-else:
-    from models.chunk_models import ChunkPayload
-    from models.record_models import SourceRecord
+from src.models.chunk_models import ChunkPayload
+from src.models.record_models import SourceRecord
 
 
 def ingest_records(

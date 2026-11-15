@@ -4,14 +4,9 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-if "." in __package__:
-    from ..models.chunk_models import ChunkPayload
-    from ..utils.dataset_utils import row_to_text, value_to_text
-    from ..models.record_models import SourceRecord
-else:
-    from models.chunk_models import ChunkPayload
-    from utils.dataset_utils import row_to_text, value_to_text
-    from models.record_models import SourceRecord
+from src.models.chunk_models import ChunkPayload
+from src.utils.dataset_utils import row_to_text, value_to_text
+from src.models.record_models import SourceRecord
 
 
 @dataclass(frozen=True)

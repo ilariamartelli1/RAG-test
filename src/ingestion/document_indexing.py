@@ -6,18 +6,11 @@ from qdrant_client import QdrantClient
 
 from .document_ingestion import ingest_document
 
-if "." in __package__:
-    from ..embeddings.embedding_provider import EmbeddingProvider, get_embedding_dimension
-    from ..models.chunk_models import ChunkPayload
-    from ..models.index_models import build_index_settings
-    from ..storage.chunk_service import store_chunks
-    from ..storage.collection_service import create_collection_with_settings, mark_collection_index_ready
-else:
-    from embeddings.embedding_provider import EmbeddingProvider, get_embedding_dimension
-    from models.chunk_models import ChunkPayload
-    from models.index_models import build_index_settings
-    from storage.chunk_service import store_chunks
-    from storage.collection_service import create_collection_with_settings, mark_collection_index_ready
+from src.embeddings.embedding_provider import EmbeddingProvider, get_embedding_dimension
+from src.models.chunk_models import ChunkPayload
+from src.models.index_models import build_index_settings
+from src.storage.chunk_service import store_chunks
+from src.storage.collection_service import create_collection_with_settings, mark_collection_index_ready
 
 
 def build_document_index(

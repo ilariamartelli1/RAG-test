@@ -3,10 +3,7 @@
 import pandas as pd
 from datasets import load_dataset
 
-if "." in __package__:
-    from ..models.record_models import SourceRecord
-else:
-    from models.record_models import SourceRecord
+from src.models.record_models import SourceRecord
 
 
 def load_dataset_dataframe(

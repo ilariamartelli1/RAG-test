@@ -2,10 +2,7 @@
 
 import math
 
-if "." in __package__:
-    from ..providers.http_helper import post_json
-else:
-    from providers.http_helper import post_json
+from src.providers.http_helper import post_json
 
 
 class OllamaEmbeddingProvider:

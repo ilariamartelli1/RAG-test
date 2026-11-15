@@ -6,10 +6,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from pydantic import ValidationError
 
-if "." in __package__:
-    from ..models.index_models import IndexSettings, compare_index_settings
-else:
-    from models.index_models import IndexSettings, compare_index_settings
+from src.models.index_models import IndexSettings, compare_index_settings
 
 
 INDEX_SETTINGS_METADATA_KEY = "index_settings"

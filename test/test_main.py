@@ -19,6 +19,14 @@ from src.embeddings.sentence_transformer_provider import SentenceTransformerProv
 
 
 class MainTests(unittest.TestCase):
+    def test_application_modules_share_package_model_types(self) -> None:
+        indexing = importlib.import_module("src.ingestion.document_indexing")
+        collection = importlib.import_module("src.storage.collection_service")
+        models = importlib.import_module("src.models.index_models")
+
+        self.assertIs(collection.IndexSettings, models.IndexSettings)
+        self.assertIs(indexing.ChunkPayload, ChunkPayload)
+
     def test_project_root_contains_docker_compose(self) -> None:
         main_module = importlib.import_module("src.main")
 

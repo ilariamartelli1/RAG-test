@@ -5,12 +5,8 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Protocol
 
-if "." in __package__:
-    from ..storage.chunk_service import retrieve_chunks
-    from ..embeddings.embedding_provider import EmbeddingProvider
-else:
-    from storage.chunk_service import retrieve_chunks
-    from embeddings.embedding_provider import EmbeddingProvider
+from src.storage.chunk_service import retrieve_chunks
+from src.embeddings.embedding_provider import EmbeddingProvider
 
 from .prompt_utils import build_rag_prompt
 

@@ -4,10 +4,7 @@ from io import BytesIO
 
 from pypdf import PdfReader
 
-if "." in __package__:
-    from ..models.record_models import SourceRecord
-else:
-    from models.record_models import SourceRecord
+from src.models.record_models import SourceRecord
 
 
 def load_pdf_records(data: bytes, source: str) -> list[SourceRecord]:

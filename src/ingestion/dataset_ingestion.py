@@ -9,16 +9,10 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
-if "." in __package__:
-    from ..models.chunk_models import ChunkPayload
-    from ..chunkers.dataset_chunker import chunk_dataset_row
-    from ..storage.chunk_service import store_chunks
-    from ..embeddings.sentence_transformer_provider import SentenceTransformerProvider
-else:
-    from models.chunk_models import ChunkPayload
-    from chunkers.dataset_chunker import chunk_dataset_row
-    from storage.chunk_service import store_chunks
-    from embeddings.sentence_transformer_provider import SentenceTransformerProvider
+from src.models.chunk_models import ChunkPayload
+from src.chunkers.dataset_chunker import chunk_dataset_row
+from src.storage.chunk_service import store_chunks
+from src.embeddings.sentence_transformer_provider import SentenceTransformerProvider
 
 if TYPE_CHECKING:
     from qdrant_client import QdrantClient

@@ -5,14 +5,9 @@ from functools import partial
 
 from .ingestion_service import ingest_records
 
-if "." in __package__:
-    from ..models.chunk_models import ChunkPayload
-    from ..chunkers.text_chunker import chunk_text_record
-    from ..loaders.document_loader import load_document_records
-else:
-    from models.chunk_models import ChunkPayload
-    from chunkers.text_chunker import chunk_text_record
-    from loaders.document_loader import load_document_records
+from src.models.chunk_models import ChunkPayload
+from src.chunkers.text_chunker import chunk_text_record
+from src.loaders.document_loader import load_document_records
 
 
 def ingest_document(

@@ -2,10 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-if "." in __package__:
-    from ..utils.id_utils import fingerprint_document
-else:
-    from utils.id_utils import fingerprint_document
+from src.utils.id_utils import fingerprint_document
 
 
 class IndexSettings(BaseModel):

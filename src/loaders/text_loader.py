@@ -1,9 +1,6 @@
 """Decode UTF-8 text documents into source records."""
 
-if "." in __package__:
-    from ..models.record_models import SourceRecord
-else:
-    from models.record_models import SourceRecord
+from src.models.record_models import SourceRecord
 
 
 def load_text_records(data: bytes, source: str) -> list[SourceRecord]:

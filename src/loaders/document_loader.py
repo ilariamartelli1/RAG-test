@@ -5,10 +5,7 @@ from pathlib import Path
 from .pdf_loader import load_pdf_records
 from .text_loader import load_text_records
 
-if "." in __package__:
-    from ..models.record_models import SourceRecord
-else:
-    from models.record_models import SourceRecord
+from src.models.record_models import SourceRecord
 
 
 def load_document_records(data: bytes, filename: str) -> list[SourceRecord]:

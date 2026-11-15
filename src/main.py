@@ -7,34 +7,19 @@ from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from anthropic import Anthropic
 
-if __package__:
-    from .providers.anthropic_provider import AnthropicProvider
-    from .storage.collection_service import ensure_collection
-    from .chunkers.dataset_chunker import chunk_dataset_record
-    from .loaders.dataset_loader import load_dataset_records
-    from .utils.dataset_utils import row_to_text
-    from .embeddings.embedding_loader import load_sentence_transformer
-    from .embeddings.sentence_transformer_provider import SentenceTransformerProvider
-    from .ingestion.ingestion_service import ingest_records
-    from .utils.id_utils import group_positions_by_id
-    from .utils.network_utils import is_online
-    from .storage.qdrant_service import ensure_qdrant
-    from .storage.chunk_service import store_chunks
-    from .rag.rag_service import ask
-else:
-    from providers.anthropic_provider import AnthropicProvider
-    from storage.collection_service import ensure_collection
-    from chunkers.dataset_chunker import chunk_dataset_record
-    from loaders.dataset_loader import load_dataset_records
-    from utils.dataset_utils import row_to_text
-    from embeddings.embedding_loader import load_sentence_transformer
-    from embeddings.sentence_transformer_provider import SentenceTransformerProvider
-    from ingestion.ingestion_service import ingest_records
-    from utils.id_utils import group_positions_by_id
-    from utils.network_utils import is_online
-    from storage.qdrant_service import ensure_qdrant
-    from storage.chunk_service import store_chunks
-    from rag.rag_service import ask
+from src.providers.anthropic_provider import AnthropicProvider
+from src.storage.collection_service import ensure_collection
+from src.chunkers.dataset_chunker import chunk_dataset_record
+from src.loaders.dataset_loader import load_dataset_records
+from src.utils.dataset_utils import row_to_text
+from src.embeddings.embedding_loader import load_sentence_transformer
+from src.embeddings.sentence_transformer_provider import SentenceTransformerProvider
+from src.ingestion.ingestion_service import ingest_records
+from src.utils.id_utils import group_positions_by_id
+from src.utils.network_utils import is_online
+from src.storage.qdrant_service import ensure_qdrant
+from src.storage.chunk_service import store_chunks
+from src.rag.rag_service import ask
 
 ###############
 ## Utilities ##
