@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct
+from qdrant_client.models import PointStruct, UpdateStatus
 
 if "." in __package__:
     from ..utils.id_utils import make_id
@@ -60,7 +60,12 @@ def store_chunks(
         PointStruct(id=point_id, vector=vector, payload=chunk.model_dump())
         for (point_id, chunk), vector in zip(new_chunks, embeddings, strict=True)
     ]
-    qdrant.upsert(collection_name=collection, points=points)
+    result = qdrant.upsert(collection_name=collection, points=points, wait=True)
+    if result.status != UpdateStatus.COMPLETED:
+        raise RuntimeError(
+            f"Qdrant did not complete the chunk write for collection {collection!r}: "
+            f"{result.status}"
+        )
     return len(points)
 
 

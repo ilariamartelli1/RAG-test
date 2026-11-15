@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
+from qdrant_client.models import Distance, UpdateStatus, VectorParams
 
 from src.storage.chunk_service import retrieve_chunks, store_chunks
 from src.chunkers.dataset_chunker import chunk_dataset_row
@@ -106,6 +106,17 @@ class ChunkServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             store_chunks(self.qdrant, self.embedder, "missing_collection", [payload], 8)
         self.embedder.embed_documents.assert_not_called()
+
+    def test_incomplete_write_response_raises_error(self) -> None:
+        payload = ChunkPayload(text="Example", metadata={})
+        self.embedder.embed_documents.return_value = [[1.0, 0.0]]
+        qdrant = MagicMock()
+        qdrant.retrieve.return_value = []
+        for status in (UpdateStatus.ACKNOWLEDGED, UpdateStatus.WAIT_TIMEOUT):
+            qdrant.upsert.return_value.status = status
+            with self.subTest(status=status), self.assertRaisesRegex(RuntimeError, "did not complete"):
+                store_chunks(qdrant, self.embedder, "test_chunks", [payload], 8)
+            self.assertTrue(qdrant.upsert.call_args.kwargs["wait"])
 
     def test_same_text_from_different_rows_keeps_both_sources(self) -> None:
         chunks = [
