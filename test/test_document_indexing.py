@@ -1,15 +1,18 @@
 """Tests for building document indexes in local Qdrant."""
 
 import unittest
+from contextlib import closing
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, UpdateStatus, VectorParams
 
 from src.ingestion.document_indexing import build_document_index
-from src.models.index_models import build_index_settings
+from src.models.index_models import IndexSettings, build_index_settings
 from src.storage.chunk_service import retrieve_document_chunks
 from src.storage.collection_service import (
+    IndexSettingsMismatchError,
     ensure_collection_index_ready,
     get_collection_index_settings,
     get_collection_index_status,
@@ -219,6 +222,79 @@ class DocumentIndexingTests(unittest.TestCase):
         info = self.qdrant.get_collection("legacy")
         self.assertEqual(info.config.metadata, {"original": "keep"})
         self.assertEqual(info.config.params.vectors.distance, Distance.DOT)
+
+    def test_interrupted_replacement_is_not_queryable_after_reopening(self) -> None:
+        old_settings = build_index_settings(
+            document_bytes=b"abcdefgh", document_filename="notes.txt",
+            embedding_provider="fake", embedding_model="test-model", max_chunk_chars=4,
+        )
+        new_settings = build_index_settings(
+            document_bytes=b"ijklmnop", document_filename="notes.txt",
+            embedding_provider="fake", embedding_model="test-model", max_chunk_chars=4,
+        )
+        with TemporaryDirectory() as path:
+            with closing(QdrantClient(path=path)) as qdrant:
+                arguments = self.arguments | {"qdrant": qdrant}
+                build_document_index(**arguments)
+                self.embedder.fail_on_call = self.embedder.document_calls + 2
+                with self.assertRaisesRegex(RuntimeError, "embedding failed"):
+                    build_document_index(**(arguments | {
+                        "collection_name": "interrupted", "data": b"ijklmnop",
+                    }))
+
+            with closing(QdrantClient(path=path)) as qdrant:
+                self.assertEqual(get_collection_index_status(qdrant, "interrupted"), "building")
+                self.assertEqual(qdrant.count("interrupted").count, 1)
+                with patch.object(qdrant, "query_points", wraps=qdrant.query_points) as query:
+                    with self.assertRaisesRegex(ValueError, "still building"):
+                        retrieve_document_chunks(
+                            qdrant, self.embedder, "interrupted", new_settings, "query", 2
+                        )
+                    query.assert_not_called()
+                    old_results = retrieve_document_chunks(
+                        qdrant, self.embedder, "documents", old_settings, "query", 2
+                    )
+                    self.assertEqual({chunk.text for chunk, _ in old_results}, {"abcd", "efgh"})
+
+                self.embedder.fail_on_call = None
+                self.assertEqual(build_document_index(**(self.arguments | {
+                    "qdrant": qdrant, "collection_name": "retry", "data": b"ijklmnop",
+                })), 2)
+                retry_results = retrieve_document_chunks(
+                    qdrant, self.embedder, "retry", new_settings, "query", 2
+                )
+                self.assertEqual({chunk.text for chunk, _ in retry_results}, {"ijkl", "mnop"})
+                self.assertEqual(get_collection_index_status(qdrant, "interrupted"), "building")
+                self.assertEqual(qdrant.count("interrupted").count, 1)
+                self.assertEqual(qdrant.count("documents").count, 2)
+
+    def test_incompatible_settings_do_not_query_or_modify_original_index(self) -> None:
+        build_document_index(**self.arguments)
+        old_settings = get_collection_index_settings(self.qdrant, "documents")
+        for field, value in (
+            ("document_fingerprint", "b" * 64),
+            ("document_filename", "other.txt"),
+            ("embedding_provider", "other-provider"),
+            ("embedding_model", "other-model"),
+            ("max_chunk_chars", 10),
+        ):
+            settings = IndexSettings.model_validate(old_settings.model_dump() | {field: value})
+            with self.subTest(field=field):
+                with patch.object(self.qdrant, "query_points", wraps=self.qdrant.query_points) as query:
+                    with self.assertRaises(IndexSettingsMismatchError) as raised:
+                        retrieve_document_chunks(
+                            self.qdrant, self.embedder, "documents", settings, "query", 2
+                        )
+                    self.assertEqual(raised.exception.differences, (field,))
+                    query.assert_not_called()
+                self.assertEqual(get_collection_index_settings(self.qdrant, "documents"), old_settings)
+                self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "ready")
+                self.assertEqual(self.qdrant.count("documents").count, 2)
+
+        old_results = retrieve_document_chunks(
+            self.qdrant, self.embedder, "documents", old_settings, "query", 2
+        )
+        self.assertEqual({chunk.text for chunk, _ in old_results}, {"abcd", "efgh"})
 
 
 if __name__ == "__main__":
