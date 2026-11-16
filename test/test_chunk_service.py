@@ -1,4 +1,8 @@
-"""Tests for Qdrant chunk storage and retrieval."""
+"""Test chunk writes and retrieval with local Qdrant and fake embeddings.
+
+These tests do not establish behavior against a remote Qdrant server or under
+concurrent collection changes.
+"""
 
 import unittest
 from unittest.mock import MagicMock, patch
@@ -27,6 +31,7 @@ class ChunkServiceTests(unittest.TestCase):
         self.embedder = MagicMock()
 
     def test_dataset_chunk_can_be_stored_retrieved_and_used_in_prompt(self) -> None:
+        """Store a dataset chunk, retrieve its payload and score, and build a prompt."""
         chunk = chunk_dataset_row(pd.Series({"subject": "Astronomy"}), "row-1")[0]
         payload = ChunkPayload(
             text=chunk.text,
@@ -55,6 +60,7 @@ class ChunkServiceTests(unittest.TestCase):
         self.assertIn("Record: row-1\nsubject: Astronomy", prompt[0]["content"])
 
     def test_accepts_embedding_provider_without_sentence_transformer(self) -> None:
+        """Store and retrieve a chunk through a fake provider implementing the interface."""
         class FakeProvider:
             def embed_documents(self, texts: list[str], batch_size: int) -> list[list[float]]:
                 return [[1.0, 0.0] for _ in texts]
@@ -72,6 +78,7 @@ class ChunkServiceTests(unittest.TestCase):
         self.assertEqual(results[0][0], payload)
 
     def test_embedding_errors_propagate(self) -> None:
+        """Propagate document and query embedding failures without storing a point."""
         self.embedder.embed_documents.side_effect = RuntimeError("document embedding failed")
         self.embedder.embed_query.side_effect = RuntimeError("query embedding failed")
 
@@ -86,6 +93,7 @@ class ChunkServiceTests(unittest.TestCase):
         self.assertEqual(self.qdrant.count("test_chunks").count, 0)
 
     def test_repeated_chunks_are_not_embedded_again(self) -> None:
+        """Identical payloads in one batch and a later call are embedded only once."""
         payload = ChunkPayload(text="Example", metadata={"row_id": "1"})
         self.embedder.embed_documents.return_value = [[1.0, 0.0]]
 
@@ -100,10 +108,12 @@ class ChunkServiceTests(unittest.TestCase):
         self.embedder.embed_documents.assert_called_once()
 
     def test_empty_batch_does_not_call_embedder(self) -> None:
+        """An empty batch stores zero chunks without invoking the embedder."""
         self.assertEqual(store_chunks(self.qdrant, self.embedder, "test_chunks", [], 8), 0)
         self.embedder.embed_documents.assert_not_called()
 
     def test_qdrant_errors_are_not_ignored(self) -> None:
+        """A missing collection fails during lookup before document embedding."""
         payload = ChunkPayload(text="Example", metadata={})
 
         with self.assertRaises(ValueError):
@@ -111,6 +121,7 @@ class ChunkServiceTests(unittest.TestCase):
         self.embedder.embed_documents.assert_not_called()
 
     def test_incomplete_write_response_raises_error(self) -> None:
+        """With wait=True, acknowledged or timed-out writes still raise an error."""
         payload = ChunkPayload(text="Example", metadata={})
         self.embedder.embed_documents.return_value = [[1.0, 0.0]]
         qdrant = MagicMock()
@@ -122,6 +133,7 @@ class ChunkServiceTests(unittest.TestCase):
             self.assertTrue(qdrant.upsert.call_args.kwargs["wait"])
 
     def test_same_text_from_different_rows_keeps_both_sources(self) -> None:
+        """Identical text with different row metadata is stored as two points."""
         chunks = [
             ChunkPayload(text="Same text", metadata={"row_id": "1"}),
             ChunkPayload(text="Same text", metadata={"row_id": "2"}),
@@ -132,6 +144,7 @@ class ChunkServiceTests(unittest.TestCase):
         self.assertEqual(self.qdrant.count("test_chunks").count, 2)
 
     def test_retrieval_uses_default_and_custom_score_thresholds(self) -> None:
+        """Check which results pass default, zero and strict similarity thresholds."""
         chunks = [
             ChunkPayload(text="Matching", metadata={}),
             ChunkPayload(text="Above threshold", metadata={}),
@@ -165,6 +178,10 @@ class ChunkServiceTests(unittest.TestCase):
         self.assertEqual(no_results, [])
 
     def test_document_retrieval_checks_readiness_settings_and_dimension(self) -> None:
+        """Search a built index, then reject a changed model and vector dimension.
+
+        The rejected requests must not send another query to Qdrant.
+        """
         self.embedder.embed_query.return_value = [1.0, 0.0]
         self.embedder.embed_documents.side_effect = lambda texts, batch_size: [
             [1.0, 0.0] for _ in texts
@@ -197,6 +214,7 @@ class ChunkServiceTests(unittest.TestCase):
             self.assertEqual(query.call_count, 1)
 
     def test_document_retrieval_does_not_query_incomplete_or_legacy_collection(self) -> None:
+        """Building, legacy and missing collections fail before Qdrant search."""
         self.embedder.embed_query.return_value = [1.0, 0.0]
         settings = build_index_settings(
             document_bytes=b"document", document_filename="doc.txt",
@@ -211,6 +229,7 @@ class ChunkServiceTests(unittest.TestCase):
         self.assertFalse(self.qdrant.collection_exists("absent"))
 
     def test_document_retrieval_rejects_empty_vectors_and_invalid_batch_size(self) -> None:
+        """Reject an empty query vector and reject a zero batch size before embedding."""
         settings = build_index_settings(
             document_bytes=b"document", document_filename="doc.txt",
             embedding_provider="fake", embedding_model="model", max_chunk_chars=100,
