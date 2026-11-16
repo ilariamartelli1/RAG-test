@@ -1,8 +1,10 @@
 """Tests for Qdrant collection setup.
 
 QdrantClient(":memory:") runs locally without a server or disk storage, so its
-collections disappear when the client closes. The persistence test instead
-uses a temporary directory to check that metadata survives reopening.
+collections disappear when the client closes. Persistence tests instead use
+temporary directories to check metadata after reopening. Mocked cases simulate
+Qdrant errors or configurations unavailable in local mode. These tests do not
+exercise concurrent operations or a remote server.
 """
 
 import unittest
@@ -42,6 +44,10 @@ class CollectionServiceTests(unittest.TestCase):
         )
 
     def test_creates_collection_with_persistent_settings(self) -> None:
+        """Create an index, reopen local storage, and verify vectors and metadata.
+
+        The saved settings and initial building status must survive reopening.
+        """
         with TemporaryDirectory() as path:
             with closing(QdrantClient(path=path)) as qdrant:
                 create_collection_with_settings(qdrant, "documents", 3, self.settings)
@@ -58,6 +64,7 @@ class CollectionServiceTests(unittest.TestCase):
                 self.assertEqual(get_collection_index_settings(qdrant, "documents"), self.settings)
 
     def test_reads_collection_index_settings(self) -> None:
+        """Settings read from a newly created collection match the supplied model."""
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
         create_collection_with_settings(qdrant, "documents", 3, self.settings)
@@ -65,6 +72,11 @@ class CollectionServiceTests(unittest.TestCase):
         self.assertEqual(get_collection_index_settings(qdrant, "documents"), self.settings)
 
     def test_index_status_transition_preserves_metadata_and_points(self) -> None:
+        """Reject building as ready, then mark it ready and reopen storage.
+
+        Confirm settings, unrelated metadata and the point remain; a second
+        ready transition is rejected.
+        """
         with TemporaryDirectory() as path:
             with closing(QdrantClient(path=path)) as qdrant:
                 create_collection_with_settings(qdrant, "documents", 3, self.settings)
@@ -87,6 +99,10 @@ class CollectionServiceTests(unittest.TestCase):
                     mark_collection_index_ready(qdrant, "documents", self.settings)
 
     def test_missing_and_invalid_index_status_are_rejected(self) -> None:
+        """Missing, unknown and null statuses cannot pass the status checks.
+
+        Where settings are present, marking ready also fails; metadata remains.
+        """
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
         for name, metadata in (
@@ -115,6 +131,7 @@ class CollectionServiceTests(unittest.TestCase):
             self.assertEqual(qdrant.get_collection(name).config.metadata, metadata)
 
     def test_mark_ready_rejects_mismatched_or_missing_settings(self) -> None:
+        """A different model or missing settings prevents a building-to-ready transition."""
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
         create_collection_with_settings(qdrant, "documents", 3, self.settings)
@@ -133,6 +150,10 @@ class CollectionServiceTests(unittest.TestCase):
         self.assertEqual(get_collection_index_status(qdrant, "legacy"), "building")
 
     def test_mark_ready_reports_update_and_verification_failures(self) -> None:
+        """Simulate update errors, false confirmation and failed status verification.
+
+        Each failure is surfaced, and no collection deletion is requested.
+        """
         qdrant = MagicMock()
         qdrant.get_collection.return_value.config.metadata = {
             INDEX_SETTINGS_METADATA_KEY: self.settings.model_dump(),
@@ -158,6 +179,7 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.delete_collection.assert_not_called()
 
     def test_index_status_lookup_errors_propagate(self) -> None:
+        """A failed status lookup propagates without attempting an update."""
         qdrant = MagicMock()
         qdrant.get_collection.side_effect = RuntimeError("unavailable")
         with self.assertRaisesRegex(RuntimeError, "unavailable"):
@@ -165,6 +187,10 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.update_collection.assert_not_called()
 
     def test_compares_collection_index_settings_without_modification(self) -> None:
+        """Compare matching and changed settings against stored metadata.
+
+        Report the three changed fields and preserve the original settings and point.
+        """
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
         create_collection_with_settings(qdrant, "documents", 3, self.settings)
@@ -186,6 +212,7 @@ class CollectionServiceTests(unittest.TestCase):
         self.assertEqual(qdrant.count("documents").count, 1)
 
     def test_comparison_propagates_missing_and_invalid_settings(self) -> None:
+        """Comparison raises for missing or invalid settings and preserves metadata."""
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
         for name, metadata in (
@@ -202,6 +229,7 @@ class CollectionServiceTests(unittest.TestCase):
             self.assertEqual(qdrant.get_collection(name).config.metadata, metadata)
 
     def test_comparison_propagates_qdrant_errors(self) -> None:
+        """A Qdrant lookup failure propagates without creating, updating or deleting."""
         qdrant = MagicMock()
         qdrant.get_collection.side_effect = RuntimeError("unavailable")
 
@@ -212,6 +240,7 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.delete_collection.assert_not_called()
 
     def test_settings_check_accepts_matching_settings(self) -> None:
+        """Matching stored and current settings pass the settings-only check."""
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
         create_collection_with_settings(qdrant, "documents", 3, self.settings)
@@ -219,6 +248,10 @@ class CollectionServiceTests(unittest.TestCase):
         self.assertIsNone(ensure_collection_index_settings(qdrant, "documents", self.settings))
 
     def test_document_compatibility_checks_ready_settings_and_vectors(self) -> None:
+        """Reject a building index, a changed model and a mismatched vector size.
+
+        Matching ready settings pass; the stored point, settings and status remain.
+        """
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
         create_collection_with_settings(qdrant, "documents", 3, self.settings)
@@ -241,6 +274,10 @@ class CollectionServiceTests(unittest.TestCase):
         self.assertEqual(get_collection_index_status(qdrant, "documents"), "ready")
 
     def test_document_compatibility_rejects_missing_or_incompatible_collections(self) -> None:
+        """Reject missing metadata, dot distance, named vectors and an absent collection.
+
+        Existing metadata remains unchanged and the absent collection is not created.
+        """
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
         for name, metadata, vectors in (
@@ -265,6 +302,7 @@ class CollectionServiceTests(unittest.TestCase):
         self.assertFalse(qdrant.collection_exists("absent"))
 
     def test_document_compatibility_propagates_lookup_errors(self) -> None:
+        """Compatibility lookup failures propagate without modifying the collection."""
         qdrant = MagicMock()
         qdrant.get_collection.side_effect = RuntimeError("unavailable")
         with self.assertRaisesRegex(RuntimeError, "unavailable"):
@@ -274,6 +312,10 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.delete_collection.assert_not_called()
 
     def test_settings_check_rejects_differences_without_modifying_collection(self) -> None:
+        """A mismatch error identifies the collection and differing model and chunk size.
+
+        The stored settings and point remain unchanged.
+        """
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
         create_collection_with_settings(qdrant, "documents", 3, self.settings)
@@ -298,6 +340,11 @@ class CollectionServiceTests(unittest.TestCase):
         self.assertEqual(qdrant.count("documents").count, 1)
 
     def test_settings_check_propagates_missing_invalid_and_lookup_errors(self) -> None:
+        """Distinguish missing or invalid settings from a settings mismatch.
+
+        Check the error reason and cause, preserve metadata, and propagate
+        service failures without updating or deleting.
+        """
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
         for name, metadata in (
@@ -331,6 +378,7 @@ class CollectionServiceTests(unittest.TestCase):
         unavailable.delete_collection.assert_not_called()
 
     def test_missing_index_settings_are_rejected_without_modification(self) -> None:
+        """Absent settings metadata raises while preserving existing metadata and point."""
         for metadata in (None, {}, {"other": "keep"}):
             with self.subTest(metadata=metadata):
                 qdrant = QdrantClient(":memory:")
@@ -351,6 +399,7 @@ class CollectionServiceTests(unittest.TestCase):
                 self.assertEqual(qdrant.count("documents").count, 1)
 
     def test_invalid_index_settings_are_rejected_without_modification(self) -> None:
+        """Reject malformed settings values and preserve their original metadata."""
         for value in (None, "invalid", {}, self.settings.model_dump() | {"unexpected": True}):
             with self.subTest(value=value):
                 qdrant = QdrantClient(":memory:")
@@ -368,6 +417,7 @@ class CollectionServiceTests(unittest.TestCase):
                 self.assertEqual(qdrant.get_collection("documents").config.metadata, metadata)
 
     def test_index_settings_lookup_errors_propagate(self) -> None:
+        """A failed settings lookup does not create, update or delete a collection."""
         qdrant = MagicMock()
         qdrant.get_collection.side_effect = RuntimeError("unavailable")
 
@@ -378,6 +428,7 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.delete_collection.assert_not_called()
 
     def test_settings_creation_does_not_modify_existing_collection(self) -> None:
+        """Creating at an occupied name fails and retains its metadata and point."""
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
         qdrant.create_collection(
@@ -395,6 +446,7 @@ class CollectionServiceTests(unittest.TestCase):
         self.assertEqual(qdrant.count("documents").count, 1)
 
     def test_settings_creation_rejects_invalid_dimension(self) -> None:
+        """Zero or negative vector dimensions fail before collection creation."""
         qdrant = MagicMock()
         for dimension in (0, -1):
             with self.subTest(dimension=dimension), self.assertRaisesRegex(ValueError, "dimension"):
@@ -402,6 +454,7 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.create_collection.assert_not_called()
 
     def test_settings_creation_errors_propagate(self) -> None:
+        """Creation errors propagate without attempting to verify metadata."""
         qdrant = MagicMock()
         qdrant.create_collection.side_effect = RuntimeError("unavailable")
 
@@ -410,6 +463,10 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.get_collection.assert_not_called()
 
     def test_settings_creation_rejects_failed_creation_or_missing_metadata(self) -> None:
+        """Reject false creation confirmation or incomplete and incorrect metadata.
+
+        A collection is not deleted when verification fails.
+        """
         qdrant = MagicMock()
         qdrant.create_collection.return_value = False
 
@@ -436,6 +493,7 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.delete_collection.assert_not_called()
 
     def test_settings_verification_errors_propagate_without_deleting_collection(self) -> None:
+        """A read failure after creation propagates without deleting the collection."""
         qdrant = MagicMock()
         qdrant.create_collection.return_value = True
         qdrant.get_collection.side_effect = RuntimeError("unavailable")
@@ -445,6 +503,7 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.delete_collection.assert_not_called()
 
     def test_creates_collection_once(self) -> None:
+        """The legacy ensure helper creates a cosine collection, then reuses it."""
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
 
@@ -455,6 +514,7 @@ class CollectionServiceTests(unittest.TestCase):
         self.assertFalse(ensure_collection(qdrant, "documents", 3))
 
     def test_existing_collection_is_not_recreated(self) -> None:
+        """A compatible existing collection is checked without a creation request."""
         qdrant = MagicMock()
         qdrant.collection_exists.return_value = True
         qdrant.get_collection.return_value.config.params.vectors = VectorParams(
@@ -466,6 +526,7 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.create_collection.assert_not_called()
 
     def test_existing_collection_with_incompatible_configuration_is_preserved(self) -> None:
+        """Wrong vector size or distance raises while retaining the config and point."""
         for size, distance in ((4, Distance.COSINE), (3, Distance.DOT)):
             with self.subTest(size=size, distance=distance):
                 qdrant = QdrantClient(":memory:")
@@ -486,6 +547,7 @@ class CollectionServiceTests(unittest.TestCase):
                 self.assertEqual(qdrant.count("documents").count, 1)
 
     def test_rejects_named_vectors(self) -> None:
+        """The legacy ensure helper rejects named vectors without deleting the collection."""
         qdrant = QdrantClient(":memory:")
         self.addCleanup(qdrant.close)
         qdrant.create_collection(
@@ -497,6 +559,7 @@ class CollectionServiceTests(unittest.TestCase):
         self.assertTrue(qdrant.collection_exists("documents"))
 
     def test_rejects_multivector_configuration(self) -> None:
+        """A mocked multivector config is rejected without creating or deleting."""
         qdrant = MagicMock()
         qdrant.collection_exists.return_value = True
         qdrant.get_collection.return_value.config.params.vectors = VectorParams(
@@ -510,6 +573,7 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.delete_collection.assert_not_called()
 
     def test_invalid_dimension_does_not_contact_qdrant(self) -> None:
+        """The legacy ensure helper rejects nonpositive dimensions before contacting Qdrant."""
         qdrant = MagicMock()
         for dimension in (0, -1):
             with self.subTest(dimension=dimension), self.assertRaisesRegex(ValueError, "dimension"):
@@ -518,6 +582,7 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.create_collection.assert_not_called()
 
     def test_existing_collection_lookup_errors_propagate(self) -> None:
+        """An existing collection lookup failure does not trigger collection creation."""
         qdrant = MagicMock()
         qdrant.collection_exists.return_value = True
         qdrant.get_collection.side_effect = RuntimeError("unavailable")
@@ -527,6 +592,7 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.create_collection.assert_not_called()
 
     def test_creation_errors_propagate(self) -> None:
+        """The legacy ensure helper propagates errors when collection creation fails."""
         qdrant = MagicMock()
         qdrant.collection_exists.return_value = False
         qdrant.create_collection.side_effect = RuntimeError("unavailable")
