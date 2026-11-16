@@ -1,4 +1,9 @@
-"""Tests for building document indexes in local Qdrant."""
+"""Test index builds, replacement builds and recovery using local Qdrant.
+
+The fake embedder avoids model calls; disk-backed tests reopen a temporary
+directory, not a Qdrant server. These tests do not exercise concurrent builds
+or collection deletion.
+"""
 
 import unittest
 from contextlib import closing
@@ -54,6 +59,7 @@ class DocumentIndexingTests(unittest.TestCase):
         }
 
     def test_builds_new_index_and_marks_it_ready(self) -> None:
+        """Build two chunks and check their text, saved settings and ready status."""
         self.assertEqual(build_document_index(**self.arguments), 2)
 
         self.assertEqual(self.qdrant.count("documents").count, 2)
@@ -69,6 +75,10 @@ class DocumentIndexingTests(unittest.TestCase):
         self.assertEqual({point.payload["text"] for point in points}, {"abcd", "efgh"})
 
     def test_failed_later_batch_leaves_partial_index_building(self) -> None:
+        """Fail the second embedding batch after one write.
+
+        Check that the stored point remains and readiness rejects the partial index.
+        """
         self.embedder.fail_on_call = 2
         with self.assertRaisesRegex(RuntimeError, "embedding failed"):
             build_document_index(**self.arguments)
@@ -79,6 +89,10 @@ class DocumentIndexingTests(unittest.TestCase):
             ensure_collection_index_ready(self.qdrant, "documents")
 
     def test_empty_or_invalid_documents_are_not_marked_ready(self) -> None:
+        """Reject empty, whitespace-only, unsupported and undecodable documents.
+
+        Each failure happens after collection creation and leaves it building.
+        """
         for name, data, filename in (
             ("empty", b"", "empty.txt"),
             ("blank", b" \n", "blank.txt"),
@@ -91,6 +105,7 @@ class DocumentIndexingTests(unittest.TestCase):
             self.assertEqual(get_collection_index_status(self.qdrant, name), "building")
 
     def test_existing_collection_is_not_modified(self) -> None:
+        """A build using an occupied name fails and preserves its config and point."""
         self.qdrant.create_collection(
             "documents",
             vectors_config=VectorParams(size=2, distance=Distance.DOT),
@@ -107,6 +122,7 @@ class DocumentIndexingTests(unittest.TestCase):
         self.assertEqual(self.qdrant.get_collection("documents").config.params.vectors.distance, Distance.DOT)
 
     def test_invalid_settings_and_dimension_probe_fail_before_creation(self) -> None:
+        """Invalid sizes or model name and a failed dimension probe create nothing."""
         for field, value in (
             ("chunk_batch_size", 0),
             ("embedding_batch_size", 0),
@@ -123,12 +139,14 @@ class DocumentIndexingTests(unittest.TestCase):
         self.assertFalse(self.qdrant.collection_exists("documents"))
 
     def test_unconfirmed_write_does_not_mark_index_ready(self) -> None:
+        """A Qdrant write exception propagates and leaves the index building."""
         with patch.object(self.qdrant, "upsert", side_effect=RuntimeError("write failed")):
             with self.assertRaisesRegex(RuntimeError, "write failed"):
                 build_document_index(**self.arguments)
         self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "building")
 
     def test_acknowledged_but_incomplete_write_does_not_mark_index_ready(self) -> None:
+        """An acknowledged write is insufficient even when requested with wait=True."""
         result = MagicMock(status=UpdateStatus.ACKNOWLEDGED)
         with patch.object(self.qdrant, "upsert", return_value=result) as upsert:
             with self.assertRaisesRegex(RuntimeError, "did not complete"):
@@ -137,6 +155,7 @@ class DocumentIndexingTests(unittest.TestCase):
         self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "building")
 
     def test_ready_update_errors_propagate(self) -> None:
+        """If marking ready raises before updating, both written points remain building."""
         with patch(
             "src.ingestion.document_indexing.mark_collection_index_ready",
             side_effect=RuntimeError("status update failed"),
@@ -147,6 +166,10 @@ class DocumentIndexingTests(unittest.TestCase):
         self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "building")
 
     def test_building_replacement_keeps_current_collection_ready(self) -> None:
+        """Build a different document separately and retrieve from both indexes.
+
+        Check the original settings and ready status remain unchanged.
+        """
         build_document_index(**self.arguments)
         old_settings = get_collection_index_settings(self.qdrant, "documents")
         arguments = self.arguments | {
@@ -169,6 +192,10 @@ class DocumentIndexingTests(unittest.TestCase):
         self.assertEqual([chunk.text for chunk, _ in new_results], ["new data"])
 
     def test_failed_replacement_leaves_original_ready_and_replacement_building(self) -> None:
+        """Fail the replacement's second batch and keep the original queryable.
+
+        The partial replacement retains one point and fails the readiness check.
+        """
         build_document_index(**self.arguments)
         old_settings = get_collection_index_settings(self.qdrant, "documents")
         self.embedder.fail_on_call = self.embedder.document_calls + 2
@@ -190,6 +217,11 @@ class DocumentIndexingTests(unittest.TestCase):
             ensure_collection_index_ready(self.qdrant, "replacement")
 
     def test_replacement_failure_after_status_update_leaves_both_collections(self) -> None:
+        """Simulate an error after the ready update has actually succeeded.
+
+        Both collections remain present; the replacement can already be ready
+        even though the build reported failure.
+        """
         build_document_index(**self.arguments)
         arguments = self.arguments | {"collection_name": "replacement"}
 
@@ -209,6 +241,7 @@ class DocumentIndexingTests(unittest.TestCase):
         self.assertEqual(self.qdrant.count("replacement").count, 2)
 
     def test_building_new_collection_leaves_legacy_collection_untouched(self) -> None:
+        """Building elsewhere preserves a legacy collection's point, config and metadata."""
         self.qdrant.create_collection(
             "legacy", vectors_config=VectorParams(size=2, distance=Distance.DOT),
             metadata={"original": "keep"},
@@ -224,6 +257,11 @@ class DocumentIndexingTests(unittest.TestCase):
         self.assertEqual(info.config.params.vectors.distance, Distance.DOT)
 
     def test_interrupted_replacement_is_not_queryable_after_reopening(self) -> None:
+        """Reopen local storage after a replacement fails on its second batch.
+
+        Checked retrieval must not query the partial index; the original stays
+        queryable and a new retry succeeds without deleting either collection.
+        """
         old_settings = build_index_settings(
             document_bytes=b"abcdefgh", document_filename="notes.txt",
             embedding_provider="fake", embedding_model="test-model", max_chunk_chars=4,
@@ -269,6 +307,11 @@ class DocumentIndexingTests(unittest.TestCase):
                 self.assertEqual(qdrant.count("documents").count, 2)
 
     def test_incompatible_settings_do_not_query_or_modify_original_index(self) -> None:
+        """Change each saved setting in turn and check retrieval stops before search.
+
+        The error names the differing field; the original stays ready and
+        queryable with its saved settings.
+        """
         build_document_index(**self.arguments)
         old_settings = get_collection_index_settings(self.qdrant, "documents")
         for field, value in (
