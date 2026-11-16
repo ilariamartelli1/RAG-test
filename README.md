@@ -152,8 +152,12 @@ complete application.
    weights. Marking an index ready relies on completing all writes successfully.
    Changing document content, embedding model or chunking settings will
    require an explicit rebuild before querying. Retrieval and generation
-   setting changes will not require re-indexing. Safe rebuild and integration
-   of compatibility checks into the complete application are still planned.
+   setting changes will not require re-indexing. To rebuild, a caller can use
+   `build_document_index` with a new collection name and switch only after it
+   succeeds; the old collection is not modified or deleted. Failed builds can
+   leave partial collections, and a failed final status update can leave their
+   status unknown. Ownership, cleanup, UI confirmation and application
+   integration are still planned.
 
 7. **Ask a question.** The planned UI will submit the question to
    `rag/rag_service.py`. The question is embedded using the index's embedding

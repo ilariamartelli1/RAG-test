@@ -8,10 +8,12 @@ from qdrant_client.models import Distance, PointStruct, UpdateStatus, VectorPara
 
 from src.ingestion.document_indexing import build_document_index
 from src.models.index_models import build_index_settings
+from src.storage.chunk_service import retrieve_document_chunks
 from src.storage.collection_service import (
     ensure_collection_index_ready,
     get_collection_index_settings,
     get_collection_index_status,
+    mark_collection_index_ready,
 )
 
 
@@ -140,6 +142,83 @@ class DocumentIndexingTests(unittest.TestCase):
                 build_document_index(**self.arguments)
         self.assertEqual(self.qdrant.count("documents").count, 2)
         self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "building")
+
+    def test_building_replacement_keeps_current_collection_ready(self) -> None:
+        build_document_index(**self.arguments)
+        old_settings = get_collection_index_settings(self.qdrant, "documents")
+        arguments = self.arguments | {
+            "collection_name": "replacement", "data": b"new data", "max_chunk_chars": 8,
+        }
+        self.assertEqual(build_document_index(**arguments), 1)
+        self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "ready")
+        self.assertEqual(get_collection_index_settings(self.qdrant, "documents"), old_settings)
+        old_results = retrieve_document_chunks(
+            self.qdrant, self.embedder, "documents", old_settings, "query", 2
+        )
+        self.assertEqual({chunk.text for chunk, _ in old_results}, {"abcd", "efgh"})
+        new_settings = build_index_settings(
+            document_bytes=b"new data", document_filename="notes.txt",
+            embedding_provider="fake", embedding_model="test-model", max_chunk_chars=8,
+        )
+        new_results = retrieve_document_chunks(
+            self.qdrant, self.embedder, "replacement", new_settings, "query", 2
+        )
+        self.assertEqual([chunk.text for chunk, _ in new_results], ["new data"])
+
+    def test_failed_replacement_leaves_original_ready_and_replacement_building(self) -> None:
+        build_document_index(**self.arguments)
+        old_settings = get_collection_index_settings(self.qdrant, "documents")
+        self.embedder.fail_on_call = self.embedder.document_calls + 2
+        arguments = self.arguments | {"collection_name": "replacement"}
+
+        with self.assertRaisesRegex(RuntimeError, "embedding failed"):
+            build_document_index(**arguments)
+
+        self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "ready")
+        self.assertEqual(get_collection_index_settings(self.qdrant, "documents"), old_settings)
+        self.assertEqual(self.qdrant.count("documents").count, 2)
+        old_results = retrieve_document_chunks(
+            self.qdrant, self.embedder, "documents", old_settings, "query", 2
+        )
+        self.assertEqual({chunk.text for chunk, _ in old_results}, {"abcd", "efgh"})
+        self.assertEqual(get_collection_index_status(self.qdrant, "replacement"), "building")
+        self.assertEqual(self.qdrant.count("replacement").count, 1)
+        with self.assertRaisesRegex(ValueError, "still building"):
+            ensure_collection_index_ready(self.qdrant, "replacement")
+
+    def test_replacement_failure_after_status_update_leaves_both_collections(self) -> None:
+        build_document_index(**self.arguments)
+        arguments = self.arguments | {"collection_name": "replacement"}
+
+        def update_then_fail(qdrant, collection_name, settings):
+            mark_collection_index_ready(qdrant, collection_name, settings)
+            raise RuntimeError("verification failed")
+
+        with patch(
+            "src.ingestion.document_indexing.mark_collection_index_ready",
+            side_effect=update_then_fail,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "verification failed"):
+                build_document_index(**arguments)
+        self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "ready")
+        self.assertEqual(self.qdrant.count("documents").count, 2)
+        self.assertEqual(get_collection_index_status(self.qdrant, "replacement"), "ready")
+        self.assertEqual(self.qdrant.count("replacement").count, 2)
+
+    def test_building_new_collection_leaves_legacy_collection_untouched(self) -> None:
+        self.qdrant.create_collection(
+            "legacy", vectors_config=VectorParams(size=2, distance=Distance.DOT),
+            metadata={"original": "keep"},
+        )
+        self.qdrant.upsert("legacy", points=[
+            PointStruct(id=1, vector=[1.0, 0.0], payload={"text": "keep"})
+        ])
+        arguments = self.arguments | {"collection_name": "replacement"}
+        self.assertEqual(build_document_index(**arguments), 2)
+        self.assertEqual(self.qdrant.count("legacy").count, 1)
+        info = self.qdrant.get_collection("legacy")
+        self.assertEqual(info.config.metadata, {"original": "keep"})
+        self.assertEqual(info.config.params.vectors.distance, Distance.DOT)
 
 
 if __name__ == "__main__":
