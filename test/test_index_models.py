@@ -1,10 +1,15 @@
-"""Tests for document index settings."""
+"""Tests for document index settings and build identity."""
 
 import unittest
 
 from pydantic import ValidationError
 
-from src.models.index_models import IndexSettings, build_index_settings, compare_index_settings
+from src.models.index_models import (
+    IndexBuildManifest,
+    IndexSettings,
+    build_index_settings,
+    compare_index_settings,
+)
 
 
 class IndexModelsTests(unittest.TestCase):
@@ -149,6 +154,72 @@ class IndexModelsTests(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             build_index_settings(**(arguments | {"document_bytes": "not bytes"}))
+
+
+class IndexBuildManifestTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.settings = IndexSettings(
+            document_fingerprint="a" * 64,
+            document_filename="example.txt",
+            embedding_provider="ollama",
+            embedding_model="nomic-embed-text",
+            max_chunk_chars=1000,
+        )
+        self.manifest_data = {
+            "document_id": "document-1",
+            "build_id": "build-1",
+            "collection_name": "index-1",
+            "index_settings": self.settings,
+        }
+
+    def test_round_trips_with_nested_settings(self) -> None:
+        """Preserve build identity and every index setting through JSON."""
+        manifest = IndexBuildManifest(**self.manifest_data)
+
+        self.assertEqual(IndexBuildManifest.model_validate_json(manifest.model_dump_json()), manifest)
+        self.assertEqual(manifest.model_dump(), self.manifest_data | {
+            "index_settings": self.settings.model_dump(),
+        })
+
+    def test_builds_of_same_document_have_distinct_ids(self) -> None:
+        """Build identity is distinct from the logical document identity."""
+        first = IndexBuildManifest(**self.manifest_data)
+        second = IndexBuildManifest(**(self.manifest_data | {
+            "build_id": "build-2", "collection_name": "index-2",
+        }))
+
+        self.assertEqual(first.document_id, second.document_id)
+        self.assertNotEqual(first.build_id, second.build_id)
+        self.assertNotEqual(first, second)
+
+    def test_rejects_missing_extra_and_invalid_fields(self) -> None:
+        """Reject absent, blank, non-string or invalid nested values."""
+        for field in self.manifest_data:
+            data = self.manifest_data.copy()
+            del data[field]
+            with self.subTest(missing=field), self.assertRaises(ValidationError):
+                IndexBuildManifest(**data)
+
+        for field in ("document_id", "build_id", "collection_name"):
+            for value in ("", " \t", None, 123):
+                with self.subTest(field=field, value=value), self.assertRaises(ValidationError):
+                    IndexBuildManifest(**(self.manifest_data | {field: value}))
+
+        with self.assertRaises(ValidationError):
+            IndexBuildManifest(**(self.manifest_data | {"unexpected": True}))
+        with self.assertRaises(ValidationError):
+            IndexBuildManifest(**(self.manifest_data | {
+                "index_settings": self.settings.model_dump() | {"max_chunk_chars": 0},
+            }))
+
+    def test_manifest_and_settings_are_immutable(self) -> None:
+        """Neither the build identity nor its nested settings can be reassigned."""
+        manifest = IndexBuildManifest(**self.manifest_data)
+
+        with self.assertRaises(ValidationError):
+            manifest.build_id = "build-2"
+        with self.assertRaises(ValidationError):
+            manifest.index_settings.max_chunk_chars = 500
 
 
 if __name__ == "__main__":

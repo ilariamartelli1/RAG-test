@@ -1,8 +1,14 @@
-"""Define the settings used to build a document index."""
+"""Define document index settings and build identity."""
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.utils.id_utils import fingerprint_document
+
+
+def _require_nonblank(value: str) -> str:
+    if not value.strip():
+        raise ValueError("must not be empty or whitespace")
+    return value
 
 
 class IndexSettings(BaseModel):
@@ -27,9 +33,27 @@ class IndexSettings(BaseModel):
     @field_validator("document_filename", "embedding_provider", "embedding_model")
     @classmethod
     def require_nonblank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("must not be empty or whitespace")
-        return value
+        return _require_nonblank(value)
+
+
+class IndexBuildManifest(BaseModel):
+    """Identify a document index build and the settings it uses.
+
+    Identifiers are supplied by the caller. This model does not establish
+    ownership, ensure uniqueness, track progress, or persist the manifest.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    document_id: str
+    build_id: str
+    collection_name: str
+    index_settings: IndexSettings
+
+    @field_validator("document_id", "build_id", "collection_name")
+    @classmethod
+    def require_nonblank(cls, value: str) -> str:
+        return _require_nonblank(value)
 
 
 def build_index_settings(
