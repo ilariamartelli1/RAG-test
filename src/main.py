@@ -1,4 +1,4 @@
-"""Run the example dataset ingestion and question-answering pipeline."""
+"""Run the obsolete dataset pipeline, retained until the document app replaces it."""
 
 import os
 from functools import partial
