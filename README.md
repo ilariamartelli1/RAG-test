@@ -15,6 +15,9 @@ The existing dataset example can be run from the repository root with
 dataset, and may start Qdrant via Docker Compose. Direct execution with
 `python src/main.py` is not supported.
 
+For the agreed target behavior in common collection-handling scenarios, see
+[Collection handling](COLLECTION_HANDLING.md). It is not fully implemented yet.
+
 ## Architecture
 
 ```text
@@ -107,10 +110,13 @@ complete application.
 5. **Embed and index.** `ingestion/document_ingestion.py` connects the
    document loader and chunker to `ingestion/ingestion_service.py`, which
    sends chunks to a storage callback in batches. `ingestion/document_indexing.py`
-   can build a new collection, ingest the document and mark it ready after
-   completed writes. It leaves an incomplete collection in place if ingestion
-   fails, and does not reuse an existing collection. The caller must provide
-   the actual embedding provider and model identity.
+   validates and loads the document before creating a new collection, then
+   embeds and stores chunks in batches. Invalid or empty documents create no
+   collection; an embedding or Qdrant failure after creation can leave a
+   partial collection. It marks the index ready only after completed writes,
+   but cannot resume a failed build. Document records and chunks for each record
+   are still held in memory. The caller must provide the actual embedding
+   provider and model identity.
    `storage/chunk_service.py` embeds and stores chunks in Qdrant, waiting for
    writes to complete; `utils/id_utils.py` derives identifiers from chunk
    payloads. `storage/collection_service.py` creates a collection
