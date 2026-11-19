@@ -132,6 +132,36 @@ class ChunkServiceTests(unittest.TestCase):
                 store_chunks(qdrant, self.embedder, "test_chunks", [payload], 8)
             self.assertTrue(qdrant.upsert.call_args.kwargs["wait"])
 
+    def test_expected_dimension_rejects_invalid_embeddings_before_write(self) -> None:
+        """A wrong count, dimension or vector value never reaches Qdrant upsert."""
+        payload = ChunkPayload(text="Example", metadata={})
+        for vectors in (
+            [], [[1.0, 0.0], [1.0, 0.0]], [[1.0]], [[1.0, float("inf")]],
+            [[1.0, "bad"]], [[1.0, True]],
+        ):
+            with self.subTest(vectors=vectors):
+                self.embedder.embed_documents.return_value = vectors
+                with patch.object(self.qdrant, "upsert", wraps=self.qdrant.upsert) as upsert:
+                    with self.assertRaises(ValueError):
+                        store_chunks(
+                            self.qdrant, self.embedder, "test_chunks", [payload], 8,
+                            embedding_dimension=2,
+                        )
+                    upsert.assert_not_called()
+        self.assertEqual(self.qdrant.count("test_chunks").count, 0)
+
+    def test_nonpositive_expected_dimension_does_not_contact_qdrant(self) -> None:
+        """Reject an invalid expected dimension before lookup or embedding."""
+        qdrant = MagicMock()
+        for dimension in (0, -1):
+            with self.subTest(dimension=dimension), self.assertRaises(ValueError):
+                store_chunks(
+                    qdrant, self.embedder, "test_chunks", [], 8,
+                    embedding_dimension=dimension,
+                )
+        qdrant.retrieve.assert_not_called()
+        self.embedder.embed_documents.assert_not_called()
+
     def test_same_text_from_different_rows_keeps_both_sources(self) -> None:
         """Identical text with different row metadata is stored as two points."""
         chunks = [
