@@ -10,6 +10,7 @@ from contextlib import closing
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
+from pypdf.errors import PdfReadError
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, UpdateStatus, VectorParams
 
@@ -74,35 +75,89 @@ class DocumentIndexingTests(unittest.TestCase):
         points, _ = self.qdrant.scroll("documents", with_payload=True)
         self.assertEqual({point.payload["text"] for point in points}, {"abcd", "efgh"})
 
-    def test_failed_later_batch_leaves_partial_index_building(self) -> None:
-        """Fail the second embedding batch after one write.
-
-        Check that the stored point remains and readiness rejects the partial index.
-        """
+    def test_failed_later_embedding_batch_leaves_partial_index_building(self) -> None:
+        """A failed second embedding batch leaves the first stored but not ready."""
         self.embedder.fail_on_call = 2
         with self.assertRaisesRegex(RuntimeError, "embedding failed"):
             build_document_index(**self.arguments)
 
+        self.assertEqual(self.embedder.document_calls, 2)
         self.assertEqual(self.qdrant.count("documents").count, 1)
         self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "building")
         with self.assertRaisesRegex(ValueError, "still building"):
             ensure_collection_index_ready(self.qdrant, "documents")
 
-    def test_empty_or_invalid_documents_are_not_marked_ready(self) -> None:
+    def test_empty_or_invalid_documents_create_no_collection(self) -> None:
         """Reject empty, whitespace-only, unsupported and undecodable documents.
 
-        Each failure happens after collection creation and leaves it building.
+        No embeddings are requested and no collection is created.
         """
-        for name, data, filename in (
-            ("empty", b"", "empty.txt"),
-            ("blank", b" \n", "blank.txt"),
-            ("unsupported", b"data", "file.docx"),
-            ("undecodable", b"\xff", "file.txt"),
+        with patch.object(self.embedder, "embed_query", wraps=self.embedder.embed_query) as query:
+            for name, data, filename in (
+                ("empty", b"", "empty.txt"),
+                ("blank", b" \n" * 10, "blank.txt"),
+                ("unsupported", b"data", "file.docx"),
+                ("undecodable", b"\xff", "file.txt"),
+            ):
+                arguments = self.arguments | {"collection_name": name, "data": data, "filename": filename}
+                with self.subTest(name=name), self.assertRaises(ValueError):
+                    build_document_index(**arguments)
+                self.assertFalse(self.qdrant.collection_exists(name))
+            query.assert_not_called()
+        self.assertEqual(self.embedder.document_calls, 0)
+
+    def test_invalid_pdf_creates_no_collection(self) -> None:
+        """A PDF parsing failure occurs before collection creation and embedding."""
+        with patch.object(self.embedder, "embed_query", wraps=self.embedder.embed_query) as query:
+            with self.assertRaises(PdfReadError):
+                build_document_index(**(self.arguments | {"data": b"not a pdf", "filename": "bad.pdf"}))
+            query.assert_not_called()
+        self.assertEqual(self.embedder.document_calls, 0)
+        self.assertFalse(self.qdrant.collection_exists("documents"))
+
+    def test_each_batch_is_stored_before_embedding_the_next(self) -> None:
+        """Each embedding call sees all previous batches already in Qdrant."""
+        original_embed = self.embedder.embed_documents
+        stored_counts = []
+        batch_sizes = []
+
+        def embed_after_previous_write(texts, batch_size):
+            stored_counts.append(self.qdrant.count("documents").count)
+            batch_sizes.append(len(texts))
+            self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "building")
+            return original_embed(texts, batch_size)
+
+        with patch.object(self.embedder, "embed_documents", side_effect=embed_after_previous_write):
+            self.assertEqual(build_document_index(**(self.arguments | {
+                "data": b"abcdefghijklmnopqrst", "chunk_batch_size": 2,
+            })), 5)
+        self.assertEqual(stored_counts, [0, 2, 4])
+        self.assertEqual(batch_sizes, [2, 2, 1])
+        self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "ready")
+
+    def test_invalid_embedding_results_leave_index_building(self) -> None:
+        """Reject malformed first-batch vectors without writing or marking ready."""
+        for index, vectors in enumerate((
+            [], [[1.0, 0.0], [1.0, 0.0]], [[1.0]], [[1.0, float("nan")]],
+            [[1.0, "bad"]], [[1.0, True]],
+        )):
+            collection_name = f"invalid-{index}"
+            with self.subTest(vectors=vectors):
+                with patch.object(self.embedder, "embed_documents", return_value=vectors):
+                    with self.assertRaises(ValueError):
+                        build_document_index(**(self.arguments | {"collection_name": collection_name}))
+                self.assertEqual(self.qdrant.count(collection_name).count, 0)
+                self.assertEqual(get_collection_index_status(self.qdrant, collection_name), "building")
+
+    def test_invalid_later_embedding_batch_leaves_partial_index_building(self) -> None:
+        """Reject a malformed second batch while retaining the first stored batch."""
+        with patch.object(
+            self.embedder, "embed_documents", side_effect=[[[1.0, 0.0]], [[1.0]]]
         ):
-            arguments = self.arguments | {"collection_name": name, "data": data, "filename": filename}
-            with self.subTest(name=name), self.assertRaises(ValueError):
-                build_document_index(**arguments)
-            self.assertEqual(get_collection_index_status(self.qdrant, name), "building")
+            with self.assertRaisesRegex(ValueError, "match the query dimension"):
+                build_document_index(**self.arguments)
+        self.assertEqual(self.qdrant.count("documents").count, 1)
+        self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "building")
 
     def test_existing_collection_is_not_modified(self) -> None:
         """A build using an occupied name fails and preserves its config and point."""
@@ -191,10 +246,10 @@ class DocumentIndexingTests(unittest.TestCase):
         )
         self.assertEqual([chunk.text for chunk, _ in new_results], ["new data"])
 
-    def test_failed_replacement_leaves_original_ready_and_replacement_building(self) -> None:
-        """Fail the replacement's second batch and keep the original queryable.
+    def test_failed_replacement_embedding_leaves_original_ready(self) -> None:
+        """Fail the replacement's second embedding batch after one write.
 
-        The partial replacement retains one point and fails the readiness check.
+        The partial replacement is not ready; the original remains queryable.
         """
         build_document_index(**self.arguments)
         old_settings = get_collection_index_settings(self.qdrant, "documents")
@@ -257,7 +312,7 @@ class DocumentIndexingTests(unittest.TestCase):
         self.assertEqual(info.config.params.vectors.distance, Distance.DOT)
 
     def test_interrupted_replacement_is_not_queryable_after_reopening(self) -> None:
-        """Reopen local storage after a replacement fails on its second batch.
+        """Reopen local storage after a replacement fails on its second write.
 
         Checked retrieval must not query the partial index; the original stays
         queryable and a new retry succeeds without deleting either collection.
@@ -274,11 +329,21 @@ class DocumentIndexingTests(unittest.TestCase):
             with closing(QdrantClient(path=path)) as qdrant:
                 arguments = self.arguments | {"qdrant": qdrant}
                 build_document_index(**arguments)
-                self.embedder.fail_on_call = self.embedder.document_calls + 2
-                with self.assertRaisesRegex(RuntimeError, "embedding failed"):
-                    build_document_index(**(arguments | {
-                        "collection_name": "interrupted", "data": b"ijklmnop",
-                    }))
+                original_upsert = qdrant.upsert
+                write_calls = 0
+
+                def fail_second_write(*args, **kwargs):
+                    nonlocal write_calls
+                    write_calls += 1
+                    if write_calls == 2:
+                        raise RuntimeError("write failed")
+                    return original_upsert(*args, **kwargs)
+
+                with patch.object(qdrant, "upsert", side_effect=fail_second_write):
+                    with self.assertRaisesRegex(RuntimeError, "write failed"):
+                        build_document_index(**(arguments | {
+                            "collection_name": "interrupted", "data": b"ijklmnop",
+                        }))
 
             with closing(QdrantClient(path=path)) as qdrant:
                 self.assertEqual(get_collection_index_status(qdrant, "interrupted"), "building")
@@ -294,7 +359,6 @@ class DocumentIndexingTests(unittest.TestCase):
                     )
                     self.assertEqual({chunk.text for chunk, _ in old_results}, {"abcd", "efgh"})
 
-                self.embedder.fail_on_call = None
                 self.assertEqual(build_document_index(**(self.arguments | {
                     "qdrant": qdrant, "collection_name": "retry", "data": b"ijklmnop",
                 })), 2)
