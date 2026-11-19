@@ -15,8 +15,9 @@ from unittest.mock import MagicMock
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, MultiVectorComparator, MultiVectorConfig, PointStruct, VectorParams
 
-from src.models.index_models import IndexSettings
+from src.models.index_models import IndexBuildManifest, IndexSettings
 from src.storage.collection_service import (
+    INDEX_BUILD_MANIFEST_METADATA_KEY,
     INDEX_SETTINGS_METADATA_KEY,
     INDEX_STATUS_METADATA_KEY,
     IndexSettingsMetadataError,
@@ -27,6 +28,7 @@ from src.storage.collection_service import (
     ensure_collection_index_settings,
     ensure_collection_index_ready,
     ensure_document_index_compatible,
+    get_collection_build_manifest,
     get_collection_index_settings,
     get_collection_index_status,
     mark_collection_index_ready,
@@ -42,6 +44,121 @@ class CollectionServiceTests(unittest.TestCase):
             embedding_model="nomic-embed-text",
             max_chunk_chars=1000,
         )
+        self.manifest = IndexBuildManifest(
+            document_id="document-1",
+            build_id="build-1",
+            collection_name="documents",
+            index_settings=self.settings,
+        )
+
+    def test_build_manifest_survives_reopening_and_ready_transition(self) -> None:
+        """Create with a manifest, mark ready, then reopen local Qdrant.
+
+        Build identity, settings and status survive without losing the point.
+        """
+        with TemporaryDirectory() as path:
+            with closing(QdrantClient(path=path)) as qdrant:
+                create_collection_with_settings(
+                    qdrant, "documents", 3, self.settings, manifest=self.manifest
+                )
+                self.assertEqual(get_collection_build_manifest(qdrant, "documents"), self.manifest)
+                qdrant.upsert("documents", points=[
+                    PointStruct(id=1, vector=[1.0, 0.0, 0.0], payload={"text": "keep"})
+                ])
+                mark_collection_index_ready(qdrant, "documents", self.settings)
+
+            with closing(QdrantClient(path=path)) as qdrant:
+                self.assertEqual(get_collection_build_manifest(qdrant, "documents"), self.manifest)
+                self.assertEqual(get_collection_index_status(qdrant, "documents"), "ready")
+                self.assertEqual(qdrant.count("documents").count, 1)
+
+    def test_manifest_creation_rejects_inconsistent_arguments(self) -> None:
+        """A different collection name or settings fails before contacting Qdrant."""
+        qdrant = MagicMock()
+        other_settings = IndexSettings(**(self.settings.model_dump() | {"embedding_model": "other"}))
+        for collection_name, settings in (
+            ("other", self.settings),
+            ("documents", other_settings),
+        ):
+            with self.subTest(collection=collection_name, settings=settings), self.assertRaisesRegex(
+                ValueError, "must match"
+            ):
+                create_collection_with_settings(
+                    qdrant, collection_name, 3, settings, manifest=self.manifest
+                )
+        qdrant.create_collection.assert_not_called()
+        qdrant.get_collection.assert_not_called()
+
+    def test_manifest_creation_verifies_metadata_without_deleting(self) -> None:
+        """Missing or altered manifest metadata fails verification without cleanup."""
+        qdrant = MagicMock()
+        qdrant.create_collection.return_value = True
+        base_metadata = {
+            INDEX_SETTINGS_METADATA_KEY: self.settings.model_dump(),
+            INDEX_STATUS_METADATA_KEY: "building",
+        }
+        for metadata in (
+            base_metadata,
+            base_metadata | {INDEX_BUILD_MANIFEST_METADATA_KEY: self.manifest.model_dump() | {
+                "build_id": "different",
+            }},
+        ):
+            qdrant.get_collection.return_value.config.metadata = metadata
+            with self.subTest(metadata=metadata), self.assertRaisesRegex(
+                RuntimeError, "metadata could not be verified"
+            ):
+                create_collection_with_settings(
+                    qdrant, "documents", 3, self.settings, manifest=self.manifest
+                )
+        qdrant.delete_collection.assert_not_called()
+
+    def test_read_manifest_rejects_missing_invalid_and_inconsistent_metadata(self) -> None:
+        """Reject legacy, malformed or conflicting metadata without modifying it."""
+        qdrant = QdrantClient(":memory:")
+        self.addCleanup(qdrant.close)
+        settings = self.settings.model_dump()
+        for name, metadata in (
+            ("no-metadata", None),
+            ("no-manifest", {INDEX_SETTINGS_METADATA_KEY: settings}),
+            ("invalid-manifest", {
+                INDEX_SETTINGS_METADATA_KEY: settings, INDEX_BUILD_MANIFEST_METADATA_KEY: {},
+            }),
+            ("invalid-settings", {
+                INDEX_SETTINGS_METADATA_KEY: {},
+                INDEX_BUILD_MANIFEST_METADATA_KEY: self.manifest.model_dump() | {
+                    "collection_name": "invalid-settings",
+                },
+            }),
+            ("wrong-name", {
+                INDEX_SETTINGS_METADATA_KEY: settings,
+                INDEX_BUILD_MANIFEST_METADATA_KEY: self.manifest.model_dump(),
+            }),
+            ("wrong-settings", {
+                INDEX_SETTINGS_METADATA_KEY: settings | {"embedding_model": "other"},
+                INDEX_BUILD_MANIFEST_METADATA_KEY: self.manifest.model_dump() | {
+                    "collection_name": "wrong-settings",
+                },
+            }),
+        ):
+            with self.subTest(collection=name):
+                qdrant.create_collection(
+                    name, vectors_config=VectorParams(size=3, distance=Distance.COSINE),
+                    metadata=metadata,
+                )
+                with self.assertRaisesRegex(ValueError, "manifest|settings"):
+                    get_collection_build_manifest(qdrant, name)
+                self.assertEqual(qdrant.get_collection(name).config.metadata, metadata)
+
+    def test_manifest_lookup_propagates_qdrant_errors(self) -> None:
+        """A failed read is surfaced without creating, changing or deleting."""
+        qdrant = MagicMock()
+        qdrant.get_collection.side_effect = RuntimeError("unavailable")
+
+        with self.assertRaisesRegex(RuntimeError, "unavailable"):
+            get_collection_build_manifest(qdrant, "documents")
+        qdrant.create_collection.assert_not_called()
+        qdrant.update_collection.assert_not_called()
+        qdrant.delete_collection.assert_not_called()
 
     def test_creates_collection_with_persistent_settings(self) -> None:
         """Create an index, reopen local storage, and verify vectors and metadata.
@@ -439,11 +556,13 @@ class CollectionServiceTests(unittest.TestCase):
         qdrant.upsert("documents", points=[
             PointStruct(id=1, vector=[1.0, 0.0, 0.0], payload={"text": "keep"})
         ])
-        with self.assertRaises(ValueError):
-            create_collection_with_settings(qdrant, "documents", 3, self.settings)
-
-        self.assertEqual(qdrant.get_collection("documents").config.metadata, {"original": "keep"})
-        self.assertEqual(qdrant.count("documents").count, 1)
+        for manifest in (None, self.manifest):
+            with self.subTest(manifest=manifest), self.assertRaises(ValueError):
+                create_collection_with_settings(
+                    qdrant, "documents", 3, self.settings, manifest=manifest
+                )
+            self.assertEqual(qdrant.get_collection("documents").config.metadata, {"original": "keep"})
+            self.assertEqual(qdrant.count("documents").count, 1)
 
     def test_settings_creation_rejects_invalid_dimension(self) -> None:
         """Zero or negative vector dimensions fail before collection creation."""

@@ -6,11 +6,12 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from pydantic import ValidationError
 
-from src.models.index_models import IndexSettings, compare_index_settings
+from src.models.index_models import IndexBuildManifest, IndexSettings, compare_index_settings
 
 
 INDEX_SETTINGS_METADATA_KEY = "index_settings"
 INDEX_STATUS_METADATA_KEY = "index_status"
+INDEX_BUILD_MANIFEST_METADATA_KEY = "index_build_manifest"
 IndexStatus = Literal["building", "ready"]
 
 
@@ -36,6 +37,34 @@ class IndexSettingsMetadataError(ValueError):
         self.collection_name = collection_name
         self.reason = reason
         super().__init__(message)
+
+
+def get_collection_build_manifest(
+    qdrant: QdrantClient, collection_name: str
+) -> IndexBuildManifest:
+    """Read a build manifest and check it agrees with collection metadata.
+
+    The collection name must be the physical name stored in the manifest, not
+    an alias. Missing, invalid or inconsistent metadata raises ValueError.
+    This does not establish ownership, readiness or permission to delete.
+    """
+    metadata = qdrant.get_collection(collection_name).config.metadata
+    if metadata is None or INDEX_BUILD_MANIFEST_METADATA_KEY not in metadata:
+        raise ValueError(f"Collection {collection_name!r} has no index build manifest metadata")
+
+    try:
+        manifest = IndexBuildManifest.model_validate(metadata[INDEX_BUILD_MANIFEST_METADATA_KEY])
+        settings = IndexSettings.model_validate(metadata.get(INDEX_SETTINGS_METADATA_KEY))
+    except ValidationError as exc:
+        raise ValueError(
+            f"Collection {collection_name!r} has invalid build manifest or index settings metadata"
+        ) from exc
+
+    if manifest.collection_name != collection_name or manifest.index_settings != settings:
+        raise ValueError(
+            f"Collection {collection_name!r} has inconsistent build manifest metadata"
+        )
+    return manifest
 
 
 def get_collection_index_settings(
@@ -132,20 +161,29 @@ def create_collection_with_settings(
     collection_name: str,
     embedding_dimension: int,
     settings: IndexSettings,
+    *,
+    manifest: IndexBuildManifest | None = None,
 ) -> None:
-    """Create a new cosine collection with settings and a building status.
+    """Create a new cosine collection with settings, status and optional manifest.
 
     Existing collections are not modified. Qdrant errors propagate. If creation
     succeeds but metadata cannot be verified, the new collection is left in
-    place and the error must be resolved before using it.
+    place and the error must be resolved before using it. A manifest records
+    caller-supplied identity but does not establish ownership.
     """
     if embedding_dimension <= 0:
         raise ValueError("embedding_dimension must be greater than zero")
+    if manifest is not None and (
+        manifest.collection_name != collection_name or manifest.index_settings != settings
+    ):
+        raise ValueError("Build manifest must match the collection name and index settings")
 
     metadata = {
         INDEX_SETTINGS_METADATA_KEY: settings.model_dump(),
         INDEX_STATUS_METADATA_KEY: "building",
     }
+    if manifest is not None:
+        metadata[INDEX_BUILD_MANIFEST_METADATA_KEY] = manifest.model_dump()
     created = qdrant.create_collection(
         collection_name=collection_name,
         vectors_config=VectorParams(
@@ -162,8 +200,8 @@ def create_collection_with_settings(
         stored_metadata.get(key) != value for key, value in metadata.items()
     ):
         raise RuntimeError(
-            f"Collection {collection_name!r} was created but its index settings or "
-            "status metadata could not be verified"
+            f"Collection {collection_name!r} was created but its index settings, "
+            "status or build manifest metadata could not be verified"
         )
 
 
