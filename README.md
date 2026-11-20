@@ -143,8 +143,10 @@ complete application.
    IDs are unique; the manifest does not establish ownership or enable resume.
    Lower-level collection creation can still omit a manifest.
    `models/registry_models.py` defines document and build records for a future
-   registry. These records are not persisted or connected to indexing; SQLite
-   storage, ownership checks and recovery remain planned.
+   registry. `storage/registry_service.py` can initialize its SQLite schema at
+   a caller-supplied path. It does not yet register records or connect to
+   indexing; ownership checks and recovery remain planned. Future registry
+   writers must enable SQLite foreign keys on each connection.
    `storage/collection_service.py` can create a new collection with those
    settings and an initial `building` status in its metadata and read settings
    back; this requires Qdrant collection metadata support. Helpers can read
