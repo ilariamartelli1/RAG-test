@@ -15,11 +15,12 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, UpdateStatus, VectorParams
 
 from src.ingestion.document_indexing import build_document_index
-from src.models.index_models import IndexSettings, build_index_settings
+from src.models.index_models import IndexBuildManifest, IndexSettings, build_index_settings
 from src.storage.chunk_service import retrieve_document_chunks
 from src.storage.collection_service import (
     IndexSettingsMismatchError,
     ensure_collection_index_ready,
+    get_collection_build_manifest,
     get_collection_index_settings,
     get_collection_index_status,
     mark_collection_index_ready,
@@ -49,6 +50,8 @@ class DocumentIndexingTests(unittest.TestCase):
         self.arguments = {
             "qdrant": self.qdrant,
             "collection_name": "documents",
+            "document_id": "document-1",
+            "build_id": "build-1",
             "data": b"abcdefgh",
             "filename": "notes.txt",
             "embedder": self.embedder,
@@ -60,7 +63,7 @@ class DocumentIndexingTests(unittest.TestCase):
         }
 
     def test_builds_new_index_and_marks_it_ready(self) -> None:
-        """Build two chunks and check their text, saved settings and ready status."""
+        """Build two chunks and check their text, manifest, settings and ready status."""
         self.assertEqual(build_document_index(**self.arguments), 2)
 
         self.assertEqual(self.qdrant.count("documents").count, 2)
@@ -71,6 +74,15 @@ class DocumentIndexingTests(unittest.TestCase):
             embedding_provider="fake",
             embedding_model="test-model",
             max_chunk_chars=4,
+        ))
+        self.assertEqual(get_collection_build_manifest(self.qdrant, "documents"), IndexBuildManifest(
+            document_id="document-1",
+            build_id="build-1",
+            collection_name="documents",
+            index_settings=build_index_settings(
+                document_bytes=b"abcdefgh", document_filename="notes.txt",
+                embedding_provider="fake", embedding_model="test-model", max_chunk_chars=4,
+            ),
         ))
         points, _ = self.qdrant.scroll("documents", with_payload=True)
         self.assertEqual({point.payload["text"] for point in points}, {"abcd", "efgh"})
@@ -84,6 +96,16 @@ class DocumentIndexingTests(unittest.TestCase):
         self.assertEqual(self.embedder.document_calls, 2)
         self.assertEqual(self.qdrant.count("documents").count, 1)
         self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "building")
+        self.assertEqual(
+            get_collection_build_manifest(self.qdrant, "documents"),
+            IndexBuildManifest(
+                document_id="document-1", build_id="build-1", collection_name="documents",
+                index_settings=build_index_settings(
+                    document_bytes=b"abcdefgh", document_filename="notes.txt",
+                    embedding_provider="fake", embedding_model="test-model", max_chunk_chars=4,
+                ),
+            ),
+        )
         with self.assertRaisesRegex(ValueError, "still building"):
             ensure_collection_index_ready(self.qdrant, "documents")
 
@@ -193,6 +215,16 @@ class DocumentIndexingTests(unittest.TestCase):
                 build_document_index(**self.arguments)
         self.assertFalse(self.qdrant.collection_exists("documents"))
 
+    def test_invalid_build_identity_fails_before_embedding_or_collection_creation(self) -> None:
+        """Reject blank document and build IDs before calling the embedder or Qdrant."""
+        with patch.object(self.embedder, "embed_query", wraps=self.embedder.embed_query) as query:
+            for field in ("document_id", "build_id"):
+                with self.subTest(field=field), self.assertRaises(ValueError):
+                    build_document_index(**(self.arguments | {field: " "}))
+                self.assertFalse(self.qdrant.collection_exists("documents"))
+            query.assert_not_called()
+        self.assertEqual(self.embedder.document_calls, 0)
+
     def test_unconfirmed_write_does_not_mark_index_ready(self) -> None:
         """A Qdrant write exception propagates and leaves the index building."""
         with patch.object(self.qdrant, "upsert", side_effect=RuntimeError("write failed")):
@@ -228,11 +260,17 @@ class DocumentIndexingTests(unittest.TestCase):
         build_document_index(**self.arguments)
         old_settings = get_collection_index_settings(self.qdrant, "documents")
         arguments = self.arguments | {
-            "collection_name": "replacement", "data": b"new data", "max_chunk_chars": 8,
+            "collection_name": "replacement", "build_id": "build-2",
+            "data": b"new data", "max_chunk_chars": 8,
         }
         self.assertEqual(build_document_index(**arguments), 1)
         self.assertEqual(get_collection_index_status(self.qdrant, "documents"), "ready")
         self.assertEqual(get_collection_index_settings(self.qdrant, "documents"), old_settings)
+        old_manifest = get_collection_build_manifest(self.qdrant, "documents")
+        new_manifest = get_collection_build_manifest(self.qdrant, "replacement")
+        self.assertEqual(old_manifest.document_id, new_manifest.document_id)
+        self.assertEqual((old_manifest.build_id, new_manifest.build_id), ("build-1", "build-2"))
+        self.assertEqual(new_manifest.collection_name, "replacement")
         old_results = retrieve_document_chunks(
             self.qdrant, self.embedder, "documents", old_settings, "query", 2
         )
@@ -254,7 +292,7 @@ class DocumentIndexingTests(unittest.TestCase):
         build_document_index(**self.arguments)
         old_settings = get_collection_index_settings(self.qdrant, "documents")
         self.embedder.fail_on_call = self.embedder.document_calls + 2
-        arguments = self.arguments | {"collection_name": "replacement"}
+        arguments = self.arguments | {"collection_name": "replacement", "build_id": "build-2"}
 
         with self.assertRaisesRegex(RuntimeError, "embedding failed"):
             build_document_index(**arguments)
@@ -267,6 +305,7 @@ class DocumentIndexingTests(unittest.TestCase):
         )
         self.assertEqual({chunk.text for chunk, _ in old_results}, {"abcd", "efgh"})
         self.assertEqual(get_collection_index_status(self.qdrant, "replacement"), "building")
+        self.assertEqual(get_collection_build_manifest(self.qdrant, "replacement").build_id, "build-2")
         self.assertEqual(self.qdrant.count("replacement").count, 1)
         with self.assertRaisesRegex(ValueError, "still building"):
             ensure_collection_index_ready(self.qdrant, "replacement")
@@ -278,7 +317,7 @@ class DocumentIndexingTests(unittest.TestCase):
         even though the build reported failure.
         """
         build_document_index(**self.arguments)
-        arguments = self.arguments | {"collection_name": "replacement"}
+        arguments = self.arguments | {"collection_name": "replacement", "build_id": "build-2"}
 
         def update_then_fail(qdrant, collection_name, settings):
             mark_collection_index_ready(qdrant, collection_name, settings)
@@ -304,7 +343,7 @@ class DocumentIndexingTests(unittest.TestCase):
         self.qdrant.upsert("legacy", points=[
             PointStruct(id=1, vector=[1.0, 0.0], payload={"text": "keep"})
         ])
-        arguments = self.arguments | {"collection_name": "replacement"}
+        arguments = self.arguments | {"collection_name": "replacement", "build_id": "build-2"}
         self.assertEqual(build_document_index(**arguments), 2)
         self.assertEqual(self.qdrant.count("legacy").count, 1)
         info = self.qdrant.get_collection("legacy")
@@ -342,12 +381,20 @@ class DocumentIndexingTests(unittest.TestCase):
                 with patch.object(qdrant, "upsert", side_effect=fail_second_write):
                     with self.assertRaisesRegex(RuntimeError, "write failed"):
                         build_document_index(**(arguments | {
-                            "collection_name": "interrupted", "data": b"ijklmnop",
+                            "collection_name": "interrupted", "build_id": "build-2",
+                            "data": b"ijklmnop",
                         }))
 
             with closing(QdrantClient(path=path)) as qdrant:
                 self.assertEqual(get_collection_index_status(qdrant, "interrupted"), "building")
                 self.assertEqual(qdrant.count("interrupted").count, 1)
+                self.assertEqual(
+                    get_collection_build_manifest(qdrant, "interrupted"),
+                    IndexBuildManifest(
+                        document_id="document-1", build_id="build-2",
+                        collection_name="interrupted", index_settings=new_settings,
+                    ),
+                )
                 with patch.object(qdrant, "query_points", wraps=qdrant.query_points) as query:
                     with self.assertRaisesRegex(ValueError, "still building"):
                         retrieve_document_chunks(
@@ -360,7 +407,8 @@ class DocumentIndexingTests(unittest.TestCase):
                     self.assertEqual({chunk.text for chunk, _ in old_results}, {"abcd", "efgh"})
 
                 self.assertEqual(build_document_index(**(self.arguments | {
-                    "qdrant": qdrant, "collection_name": "retry", "data": b"ijklmnop",
+                    "qdrant": qdrant, "collection_name": "retry", "build_id": "build-3",
+                    "data": b"ijklmnop",
                 })), 2)
                 retry_results = retrieve_document_chunks(
                     qdrant, self.embedder, "retry", new_settings, "query", 2

@@ -138,9 +138,10 @@ complete application.
    a helper to fingerprint the original document bytes, and
    `build_index_settings` combines it with the other settings.
    `IndexBuildManifest` describes a document ID, build ID, collection name and
-   index settings. Collection creation can optionally save a manifest in
-   Qdrant metadata and read it back; the document builder does not yet supply
-   one. A manifest does not establish collection ownership or enable resume.
+   index settings. The document builder requires caller-supplied document and
+   build IDs and saves a manifest in Qdrant metadata. Callers must ensure build
+   IDs are unique; the manifest does not establish ownership or enable resume.
+   Lower-level collection creation can still omit a manifest.
    `storage/collection_service.py` can create a new collection with those
    settings and an initial `building` status in its metadata and read settings
    back; this requires Qdrant collection metadata support. Helpers can read

@@ -222,6 +222,7 @@ class ChunkServiceTests(unittest.TestCase):
         )
         build_document_index(
             qdrant=self.qdrant, collection_name="document", data=b"document content",
+            document_id="document-1", build_id="build-1",
             filename="doc.txt", embedder=self.embedder, embedding_provider="fake",
             embedding_model="model", embedding_batch_size=2, chunk_batch_size=2,
             max_chunk_chars=100,
