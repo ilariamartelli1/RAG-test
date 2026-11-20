@@ -142,6 +142,9 @@ complete application.
    build IDs and saves a manifest in Qdrant metadata. Callers must ensure build
    IDs are unique; the manifest does not establish ownership or enable resume.
    Lower-level collection creation can still omit a manifest.
+   `models/registry_models.py` defines document and build records for a future
+   registry. These records are not persisted or connected to indexing; SQLite
+   storage, ownership checks and recovery remain planned.
    `storage/collection_service.py` can create a new collection with those
    settings and an initial `building` status in its metadata and read settings
    back; this requires Qdrant collection metadata support. Helpers can read
