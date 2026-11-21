@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from pathlib import Path
 
+from src.models.index_models import IndexBuildManifest, IndexSettings
 from src.models.registry_models import BuildRegistryRecord, DocumentRegistryRecord
 
 
@@ -71,14 +72,15 @@ def initialize_registry(database_path: str | os.PathLike[str]) -> None:
 
 @contextmanager
 def _existing_registry_transaction(
-    database_path: str | os.PathLike[str],
+    database_path: str | os.PathLike[str], *, write: bool = True
 ) -> Iterator[sqlite3.Connection]:
     path = _registry_path(database_path)
-    uri = Path(path).absolute().as_uri() + "?mode=rw"
+    mode = "rw" if write else "ro"
+    uri = Path(path).absolute().as_uri() + f"?mode={mode}"
     with closing(sqlite3.connect(uri, uri=True)) as connection:
         connection.execute("PRAGMA foreign_keys = ON")
         with connection:
-            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("BEGIN IMMEDIATE" if write else "BEGIN")
             _prepare_registry(connection, create_if_empty=False)
             yield connection
 
@@ -118,3 +120,36 @@ def register_build(database_path: str | os.PathLike[str], record: BuildRegistryR
                 manifest.index_settings.model_dump_json(),
             ),
         )
+
+
+def get_build(
+    database_path: str | os.PathLike[str], build_id: str
+) -> BuildRegistryRecord | None:
+    """Read a registered build by ID, or return None if it is not registered.
+
+    Invalid stored metadata or an orphaned build raises an error. This reads
+    SQLite only; it does not verify the corresponding Qdrant collection.
+    """
+    if not isinstance(build_id, str) or not build_id.strip():
+        raise ValueError("build_id must be a nonblank string")
+
+    with _existing_registry_transaction(database_path, write=False) as connection:
+        row = connection.execute(
+            "SELECT builds.document_id, builds.build_id, builds.collection_name, "
+            "builds.index_settings_json, documents.document_id "
+            "FROM builds LEFT JOIN documents ON builds.document_id = documents.document_id "
+            "WHERE builds.build_id = ?",
+            (build_id,),
+        ).fetchone()
+        if row is None:
+            return None
+
+        document_id, stored_build_id, collection_name, settings_json, registered_document = row
+        if registered_document is None:
+            raise ValueError(f"build {build_id!r} refers to an unregistered document")
+        return BuildRegistryRecord(manifest=IndexBuildManifest(
+            document_id=document_id,
+            build_id=stored_build_id,
+            collection_name=collection_name,
+            index_settings=IndexSettings.model_validate_json(settings_json),
+        ))

@@ -3,6 +3,7 @@
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,7 +11,12 @@ from pydantic import ValidationError
 
 from src.models.index_models import IndexBuildManifest, IndexSettings
 from src.models.registry_models import BuildRegistryRecord, DocumentRegistryRecord
-from src.storage.registry_service import initialize_registry, register_build, register_document
+from src.storage.registry_service import (
+    get_build,
+    initialize_registry,
+    register_build,
+    register_document,
+)
 
 
 class RegistryInitializationTests(unittest.TestCase):
@@ -328,6 +334,92 @@ class BuildRegistrationTests(unittest.TestCase):
             connection.execute("DROP TABLE builds")
         with self.assertRaisesRegex(ValueError, "schema does not match"):
             register_build(self.path, self.record)
+
+
+class BuildLookupTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = Path(self.directory.name) / "registry #1?.sqlite"
+        self.record = BuildRegistryRecord(manifest=IndexBuildManifest(
+            document_id="document-1",
+            build_id="build-1",
+            collection_name="collection-1",
+            index_settings=IndexSettings(
+                document_fingerprint="a" * 64,
+                document_filename="example.txt",
+                embedding_provider="ollama",
+                embedding_model="nomic-embed-text",
+                max_chunk_chars=1000,
+            ),
+        ))
+        initialize_registry(self.path)
+        register_document(self.path, DocumentRegistryRecord(document_id="document-1"))
+        register_build(self.path, self.record)
+
+    def test_reads_matching_record_and_returns_none_for_unknown_id(self) -> None:
+        """Recover the complete manifest without returning a different build."""
+        self.assertEqual(get_build(self.path, "build-1"), self.record)
+        self.assertIsNone(get_build(self.path, "unknown"))
+        self.assertIsNone(get_build(self.path, "' OR 1=1 --"))
+
+    def test_reads_during_an_uncommitted_write(self) -> None:
+        """A lookup does not reserve a writer lock or read uncommitted data."""
+        with closing(sqlite3.connect(self.path)) as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "UPDATE builds SET collection_name = ? WHERE build_id = ?",
+                ("uncommitted", "build-1"),
+            )
+            self.assertEqual(get_build(self.path, "build-1"), self.record)
+            connection.rollback()
+
+    def test_rejects_invalid_build_ids(self) -> None:
+        """Blank and non-string IDs are errors rather than missing builds."""
+        for build_id in ("", " \t", None, 123):
+            with self.subTest(build_id=build_id), self.assertRaises(ValueError):
+                get_build(self.path, build_id)
+
+    def test_rejects_invalid_stored_manifest_and_settings(self) -> None:
+        """Corrupt JSON, settings, or manifest fields are not returned as a build."""
+        for column, value in (
+            ("index_settings_json", "not-json"),
+            ("index_settings_json", "{}"),
+            ("collection_name", " "),
+        ):
+            with self.subTest(column=column):
+                with closing(sqlite3.connect(self.path)) as connection, connection:
+                    old_value = connection.execute(
+                        f"SELECT {column} FROM builds WHERE build_id = ?", ("build-1",)
+                    ).fetchone()[0]
+                    connection.execute(
+                        f"UPDATE builds SET {column} = ? WHERE build_id = ?", (value, "build-1")
+                    )
+                with self.assertRaises(ValidationError):
+                    get_build(self.path, "build-1")
+                with closing(sqlite3.connect(self.path)) as connection, connection:
+                    connection.execute(
+                        f"UPDATE builds SET {column} = ? WHERE build_id = ?", (old_value, "build-1")
+                    )
+
+    def test_rejects_orphaned_build(self) -> None:
+        """An externally corrupted foreign-key relationship is reported."""
+        with closing(sqlite3.connect(self.path)) as connection, connection:
+            connection.execute("DELETE FROM documents WHERE document_id = ?", ("document-1",))
+        with self.assertRaisesRegex(ValueError, "unregistered document"):
+            get_build(self.path, "build-1")
+
+    def test_rejects_missing_and_incompatible_registry(self) -> None:
+        """Reading never creates a missing registry or accepts a damaged schema."""
+        missing = self.path.with_name("missing.sqlite")
+        with self.assertRaises(sqlite3.OperationalError):
+            get_build(missing, "build-1")
+        self.assertFalse(missing.exists())
+
+        with closing(sqlite3.connect(self.path)) as connection, connection:
+            connection.execute("PRAGMA user_version = 2")
+        with self.assertRaisesRegex(ValueError, "not a supported document registry"):
+            get_build(self.path, "build-1")
 
 
 if __name__ == "__main__":

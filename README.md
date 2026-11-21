@@ -145,8 +145,9 @@ complete application.
    `models/registry_models.py` defines document and build records for a future
    registry. `storage/registry_service.py` can initialize its SQLite schema at
    a caller-supplied path. `register_document` saves a document ID, and
-   `register_build` saves a build's manifest for a registered document. These
-   operations do not inspect Qdrant or establish collection ownership.
+   `register_build` saves a build's manifest for a registered document.
+   `get_build` reads a registered build by ID and validates its stored data.
+   These operations do not inspect Qdrant or establish collection ownership.
    Indexing integration and recovery remain planned. Registry writers must
    enable SQLite foreign keys on each connection.
    `storage/collection_service.py` can create a new collection with those
