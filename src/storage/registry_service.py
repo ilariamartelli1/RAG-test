@@ -2,10 +2,11 @@
 
 import os
 import sqlite3
-from contextlib import closing
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from pathlib import Path
 
-from src.models.registry_models import DocumentRegistryRecord
+from src.models.registry_models import BuildRegistryRecord, DocumentRegistryRecord
 
 
 _APPLICATION_ID = 0x52414752
@@ -68,6 +69,20 @@ def initialize_registry(database_path: str | os.PathLike[str]) -> None:
             _prepare_registry(connection, create_if_empty=True)
 
 
+@contextmanager
+def _existing_registry_transaction(
+    database_path: str | os.PathLike[str],
+) -> Iterator[sqlite3.Connection]:
+    path = _registry_path(database_path)
+    uri = Path(path).absolute().as_uri() + "?mode=rw"
+    with closing(sqlite3.connect(uri, uri=True)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            _prepare_registry(connection, create_if_empty=False)
+            yield connection
+
+
 def register_document(
     database_path: str | os.PathLike[str], record: DocumentRegistryRecord
 ) -> None:
@@ -76,15 +91,30 @@ def register_document(
     Duplicate IDs raise sqlite3.IntegrityError. This does not register a build,
     store a source document, or establish ownership of a Qdrant collection.
     """
-    path = _registry_path(database_path)
     validated_record = DocumentRegistryRecord(document_id=record.document_id)
-    uri = Path(path).absolute().as_uri() + "?mode=rw"
-    with closing(sqlite3.connect(uri, uri=True)) as connection:
-        connection.execute("PRAGMA foreign_keys = ON")
-        with connection:
-            connection.execute("BEGIN IMMEDIATE")
-            _prepare_registry(connection, create_if_empty=False)
-            connection.execute(
-                "INSERT INTO documents (document_id) VALUES (?)",
-                (validated_record.document_id,),
-            )
+    with _existing_registry_transaction(database_path) as connection:
+        connection.execute(
+            "INSERT INTO documents (document_id) VALUES (?)",
+            (validated_record.document_id,),
+        )
+
+
+def register_build(database_path: str | os.PathLike[str], record: BuildRegistryRecord) -> None:
+    """Save a build manifest for an already registered document.
+
+    Duplicate build IDs, collection names, or unknown document IDs raise
+    sqlite3.IntegrityError. This does not inspect or create a Qdrant collection,
+    establish ownership, or track build progress.
+    """
+    manifest = BuildRegistryRecord.model_validate(record.model_dump()).manifest
+    with _existing_registry_transaction(database_path) as connection:
+        connection.execute(
+            "INSERT INTO builds (build_id, document_id, collection_name, index_settings_json) "
+            "VALUES (?, ?, ?, ?)",
+            (
+                manifest.build_id,
+                manifest.document_id,
+                manifest.collection_name,
+                manifest.index_settings.model_dump_json(),
+            ),
+        )

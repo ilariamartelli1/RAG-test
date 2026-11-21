@@ -8,8 +8,9 @@ from unittest.mock import patch
 
 from pydantic import ValidationError
 
-from src.models.registry_models import DocumentRegistryRecord
-from src.storage.registry_service import initialize_registry, register_document
+from src.models.index_models import IndexBuildManifest, IndexSettings
+from src.models.registry_models import BuildRegistryRecord, DocumentRegistryRecord
+from src.storage.registry_service import initialize_registry, register_build, register_document
 
 
 class RegistryInitializationTests(unittest.TestCase):
@@ -207,6 +208,126 @@ class DocumentRegistrationTests(unittest.TestCase):
         for path in ("", ":memory:", "file::memory:?cache=shared"):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 register_document(path, self.record)
+
+
+class BuildRegistrationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = Path(self.directory.name) / "registry #1?.sqlite"
+        self.settings = IndexSettings(
+            document_fingerprint="a" * 64,
+            document_filename="example.txt",
+            embedding_provider="ollama",
+            embedding_model="nomic-embed-text",
+            max_chunk_chars=1000,
+        )
+        self.manifest_data = {
+            "document_id": "document-1",
+            "build_id": "build-1",
+            "collection_name": "collection-1",
+            "index_settings": self.settings,
+        }
+        self.record = BuildRegistryRecord(manifest=IndexBuildManifest(**self.manifest_data))
+
+    def test_saves_manifest_for_registered_document(self) -> None:
+        """Store every manifest field and preserve all settings after reopening."""
+        initialize_registry(self.path)
+        register_document(self.path, DocumentRegistryRecord(document_id="document-1"))
+        register_build(self.path, self.record)
+
+        with sqlite3.connect(self.path) as connection:
+            rows = connection.execute(
+                "SELECT document_id, build_id, collection_name, index_settings_json FROM builds"
+            ).fetchall()
+        self.assertEqual(len(rows), 1)
+        document_id, build_id, collection_name, settings_json = rows[0]
+        self.assertEqual(
+            (document_id, build_id, collection_name),
+            ("document-1", "build-1", "collection-1"),
+        )
+        self.assertEqual(IndexSettings.model_validate_json(settings_json), self.settings)
+
+    def test_multiple_builds_can_share_a_document(self) -> None:
+        """A document can have multiple distinct build IDs and collection names."""
+        initialize_registry(self.path)
+        register_document(self.path, DocumentRegistryRecord(document_id="document-1"))
+        register_build(self.path, self.record)
+        second = BuildRegistryRecord(manifest=IndexBuildManifest(**(
+            self.manifest_data | {"build_id": "build-2", "collection_name": "collection-2"}
+        )))
+        register_build(self.path, second)
+
+        with sqlite3.connect(self.path) as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT document_id, build_id FROM builds ORDER BY build_id"
+                ).fetchall(),
+                [("document-1", "build-1"), ("document-1", "build-2")],
+            )
+
+    def test_rejects_duplicate_ids_and_collection_names(self) -> None:
+        """Conflicts never overwrite an existing build, even across documents."""
+        initialize_registry(self.path)
+        for document_id in ("document-1", "document-2"):
+            register_document(self.path, DocumentRegistryRecord(document_id=document_id))
+        register_build(self.path, self.record)
+
+        for changes in (
+            {"document_id": "document-2", "collection_name": "collection-2"},
+            {"document_id": "document-2", "build_id": "build-2"},
+        ):
+            conflict = BuildRegistryRecord(manifest=IndexBuildManifest(**(
+                self.manifest_data | changes
+            )))
+            with self.subTest(changes=changes), self.assertRaises(sqlite3.IntegrityError):
+                register_build(self.path, conflict)
+
+        with sqlite3.connect(self.path) as connection:
+            self.assertEqual(
+                connection.execute("SELECT document_id, build_id, collection_name FROM builds").fetchall(),
+                [("document-1", "build-1", "collection-1")],
+            )
+
+    def test_rejects_unregistered_document(self) -> None:
+        """Foreign-key enforcement prevents orphaned builds."""
+        initialize_registry(self.path)
+        with self.assertRaises(sqlite3.IntegrityError):
+            register_build(self.path, self.record)
+        with sqlite3.connect(self.path) as connection:
+            self.assertEqual(connection.execute("SELECT * FROM builds").fetchall(), [])
+
+    def test_revalidates_manifest_and_settings_before_opening_database(self) -> None:
+        """Records constructed without validation cannot persist invalid values."""
+        for changes in (
+            {"document_id": " "},
+            {"build_id": ""},
+            {"collection_name": "\t"},
+            {"index_settings": self.settings.model_copy(update={"max_chunk_chars": 0})},
+        ):
+            manifest = IndexBuildManifest.model_construct(**(self.manifest_data | changes))
+            record = BuildRegistryRecord.model_construct(manifest=manifest)
+            with self.subTest(changes=changes), self.assertRaises(ValidationError):
+                register_build(self.path, record)
+        self.assertFalse(self.path.exists())
+
+    def test_rejects_missing_uninitialized_and_incompatible_registries(self) -> None:
+        """Build registration does not create, adopt, or migrate a registry."""
+        with self.assertRaises(sqlite3.OperationalError):
+            register_build(self.path, self.record)
+        self.assertFalse(self.path.exists())
+
+        with sqlite3.connect(self.path):
+            pass
+        with self.assertRaisesRegex(ValueError, "not a supported document registry"):
+            register_build(self.path, self.record)
+
+        initialize_registry(self.path)
+        register_document(self.path, DocumentRegistryRecord(document_id="document-1"))
+        with sqlite3.connect(self.path) as connection:
+            connection.execute("DROP TABLE builds")
+        with self.assertRaisesRegex(ValueError, "schema does not match"):
+            register_build(self.path, self.record)
 
 
 if __name__ == "__main__":
