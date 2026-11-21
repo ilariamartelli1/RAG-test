@@ -1,4 +1,4 @@
-"""Tests for initializing a SQLite document and build registry."""
+"""Tests for the SQLite document and build registry."""
 
 import sqlite3
 import tempfile
@@ -6,7 +6,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.storage.registry_service import initialize_registry
+from pydantic import ValidationError
+
+from src.models.registry_models import DocumentRegistryRecord
+from src.storage.registry_service import initialize_registry, register_document
 
 
 class RegistryInitializationTests(unittest.TestCase):
@@ -125,6 +128,85 @@ class RegistryInitializationTests(unittest.TestCase):
         """Report an invalid parent directory instead of silently falling back."""
         with self.assertRaises(sqlite3.OperationalError):
             initialize_registry(self.path / "missing.sqlite")
+
+
+class DocumentRegistrationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = Path(self.directory.name) / "registry #1?.sqlite"
+        self.record = DocumentRegistryRecord(document_id="document-1")
+
+    def test_saves_document_to_existing_registry(self) -> None:
+        """Registered IDs survive reopening without creating build records."""
+        initialize_registry(self.path)
+
+        register_document(self.path, self.record)
+        register_document(self.path, DocumentRegistryRecord(document_id="document-2"))
+
+        with sqlite3.connect(self.path) as connection:
+            self.assertEqual(
+                connection.execute("SELECT document_id FROM documents ORDER BY document_id").fetchall(),
+                [("document-1",), ("document-2",)],
+            )
+            self.assertEqual(connection.execute("SELECT * FROM builds").fetchall(), [])
+
+    def test_duplicate_id_fails_without_changing_existing_record(self) -> None:
+        """A duplicate ID is an error, not a silent replacement."""
+        initialize_registry(self.path)
+        register_document(self.path, self.record)
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            register_document(self.path, self.record)
+
+        with sqlite3.connect(self.path) as connection:
+            self.assertEqual(connection.execute("SELECT * FROM documents").fetchall(), [
+                ("document-1",),
+            ])
+
+    def test_missing_registry_is_not_created(self) -> None:
+        """Registration requires explicit initialization first."""
+        with self.assertRaises(sqlite3.OperationalError):
+            register_document(self.path, self.record)
+        self.assertFalse(self.path.exists())
+
+    def test_rejects_uninitialized_and_incompatible_databases(self) -> None:
+        """Neither an empty nor an incompatible database is adopted."""
+        with sqlite3.connect(self.path):
+            pass
+        with self.assertRaisesRegex(ValueError, "not a supported document registry"):
+            register_document(self.path, self.record)
+
+        initialize_registry(self.path)
+        with sqlite3.connect(self.path) as connection:
+            connection.execute("PRAGMA user_version = 2")
+        with self.assertRaisesRegex(ValueError, "not a supported document registry"):
+            register_document(self.path, self.record)
+        with sqlite3.connect(self.path) as connection:
+            self.assertEqual(connection.execute("SELECT * FROM documents").fetchall(), [])
+
+    def test_rejects_damaged_schema_without_writing(self) -> None:
+        """A registry with a missing table is not accepted for registration."""
+        initialize_registry(self.path)
+        with sqlite3.connect(self.path) as connection:
+            connection.execute("DROP TABLE builds")
+        with self.assertRaisesRegex(ValueError, "schema does not match"):
+            register_document(self.path, self.record)
+        with sqlite3.connect(self.path) as connection:
+            self.assertEqual(connection.execute("SELECT * FROM documents").fetchall(), [])
+
+    def test_revalidates_document_id_before_opening_database(self) -> None:
+        """Even a record built without Pydantic validation cannot save a blank ID."""
+        record = DocumentRegistryRecord.model_construct(document_id=" ")
+        with self.assertRaises(ValidationError):
+            register_document(self.path, record)
+        self.assertFalse(self.path.exists())
+
+    def test_rejects_temporary_and_uri_database_paths(self) -> None:
+        """Registration accepts filesystem paths only."""
+        for path in ("", ":memory:", "file::memory:?cache=shared"):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                register_document(path, self.record)
 
 
 if __name__ == "__main__":

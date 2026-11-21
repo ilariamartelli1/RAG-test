@@ -144,9 +144,10 @@ complete application.
    Lower-level collection creation can still omit a manifest.
    `models/registry_models.py` defines document and build records for a future
    registry. `storage/registry_service.py` can initialize its SQLite schema at
-   a caller-supplied path. It does not yet register records or connect to
-   indexing; ownership checks and recovery remain planned. Future registry
-   writers must enable SQLite foreign keys on each connection.
+   a caller-supplied path, and `register_document` can save a document ID in
+   an initialized registry. Build registration and indexing integration,
+   ownership checks and recovery remain planned. Registry writers must enable
+   SQLite foreign keys on each connection.
    `storage/collection_service.py` can create a new collection with those
    settings and an initial `building` status in its metadata and read settings
    back; this requires Qdrant collection metadata support. Helpers can read
